@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Accountant — Sierra Leone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Literata:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDvaFc28cW6oaHquyC6-FC_mfKzavBrjuw",
+    authDomain: "financial-assistant-4effa.firebaseapp.com",
+    projectId: "financial-assistant-4effa",
+    storageBucket: "financial-assistant-4effa.firebasestorage.app",
+    messagingSenderId: "110070630941",
+    appId: "1:110070630941:web:85c77794d98332a21ed4f4"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  const SK = 'accountant-sl-v2';
+
+  // ── SYNC HELPERS ──
+  async function fbSave(data){
+    try {
+      await setDoc(doc(db,'accountant','main'), data);
+    } catch(e){ console.warn('Firebase save failed:',e); }
+  }
+
+  async function fbLoad(){
+    try {
+      const snap = await getDoc(doc(db,'accountant','main'));
+      return snap.exists() ? snap.data() : null;
+    } catch(e){ console.warn('Firebase load failed:',e); return null; }
+  }
+
+  // On first load: pull from Firebase into localStorage, then boot app
+  async function syncOnLoad(){
+    const remote = await fbLoad();
+    if(remote && Object.keys(remote).length){
+      localStorage.setItem(SK, JSON.stringify(remote));
+    }
+    // Signal app that Firebase is ready
+    window._fbReady = true;
+    window._fbSave  = fbSave;
+    // Re-boot if app already tried to load
+    if(window._appBooted) initApp();
+  }
+
+  syncOnLoad();
+
+  // Live sync: if another device saves, update locally
+  onSnapshot(doc(db,'accountant','main'), snap => {
+    if(snap.exists()){
+      const d = snap.data();
+      localStorage.setItem(SK, JSON.stringify(d));
+      if(window._appBooted && typeof render === 'function') render();
+    }
+  });
+</script>
+<style>
+:root {
+  --ink:     #1a2e1c; --ink2:   #3a5c3d; --ink3:   #6a8f6d;
+  --paper:   #f5f0e8; --paper2: #ede7d5; --paper3: #e4dcc8;
+  --rule:    #c8bfa8; --rule2:  #b0a48c;
+  --red:     #8b2222; --green:  #1a5c1a; --accent: #2a6b2e;
+  --radius: 6px;
+  --mono: 'DM Mono', monospace;
+  --serif: 'Literata', Georgia, serif;
+  --display: 'DM Serif Display', Georgia, serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--paper); color: var(--ink); font-family: var(--serif); min-height: 100vh;
+  background-image: repeating-linear-gradient(transparent,transparent 27px,var(--rule) 27px,var(--rule) 28px);
+  background-attachment: fixed; }
+.shell { max-width: 820px; margin: 0 auto; padding: 0 20px 80px; }
+
+/* ── ONBOARDING ── */
+#onboarding { position:fixed; inset:0; background:var(--paper);
+  background-image: repeating-linear-gradient(transparent,transparent 27px,var(--rule) 27px,var(--rule) 28px);
+  z-index:200; overflow-y:auto; display:flex; align-items:flex-start; justify-content:center; padding:40px 20px 60px; }
+.ob-card { width:100%; max-width:600px; background:var(--paper2); border:1px solid var(--rule2);
+  border-radius:10px; padding:36px 36px 32px; animation:fadeUp .5s ease both; }
+.ob-title { font-family:var(--display); font-size:clamp(28px,6vw,42px); line-height:1.05; color:var(--ink); margin-bottom:6px; }
+.ob-sub { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-bottom:28px; }
+.ob-step { display:none; }
+.ob-step.active { display:block; }
+.ob-label { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:10px; }
+.ob-question { font-family:var(--display); font-size:20px; font-style:italic; color:var(--ink2); margin-bottom:16px; }
+.ob-progress { display:flex; gap:6px; margin-bottom:24px; }
+.ob-dot { width:6px; height:6px; border-radius:50%; background:var(--rule); transition:background .2s; }
+.ob-dot.on { background:var(--accent); }
+.biz-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(148px,1fr)); gap:8px; margin-bottom:20px; }
+.biz-card { background:var(--paper); border:1px solid var(--rule); border-radius:var(--radius); padding:14px 12px; cursor:pointer; transition:all .15s; text-align:center; }
+.biz-card:hover { border-color:var(--ink2); background:var(--paper3); }
+.biz-card.on { border-color:var(--accent); background:#d4edda; }
+.biz-icon { font-size:26px; margin-bottom:6px; }
+.biz-name { font-family:var(--mono); font-size:11px; color:var(--ink2); }
+.biz-desc { font-family:var(--mono); font-size:9px; color:var(--ink3); margin-top:2px; }
+.ob-input { width:100%; background:var(--paper); border:1px solid var(--rule2); border-radius:var(--radius);
+  padding:10px 14px; font-family:var(--serif); font-size:15px; color:var(--ink); outline:none; margin-bottom:16px; transition:border .15s; }
+.ob-input:focus { border-color:var(--accent); }
+.ob-btn { background:var(--ink); color:var(--paper); border:none; border-radius:var(--radius);
+  padding:11px 28px; font-family:var(--mono); font-size:13px; cursor:pointer; transition:opacity .15s; }
+.ob-btn:hover { opacity:.85; }
+.ob-btn-ghost { background:transparent; color:var(--ink3); border:1px solid var(--rule); border-radius:var(--radius);
+  padding:10px 20px; font-family:var(--mono); font-size:12px; cursor:pointer; margin-left:10px; transition:all .15s; }
+.ob-btn-ghost:hover { border-color:var(--ink2); color:var(--ink2); }
+
+/* ── HEADER ── */
+header { padding:32px 0 20px; border-bottom:2px solid var(--ink); margin-bottom:28px;
+  display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  background:var(--paper); position:sticky; top:0; z-index:10; }
+.book-title { font-family:var(--display); font-size:clamp(22px,4vw,34px); line-height:1; }
+.book-sub { font-family:var(--mono); font-size:10px; color:var(--ink3); letter-spacing:.12em; text-transform:uppercase; margin-top:4px; }
+.header-right { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.hdr-btn { font-family:var(--mono); font-size:11px; letter-spacing:.04em; border:1px solid var(--rule);
+  background:transparent; color:var(--ink2); padding:5px 11px; border-radius:var(--radius); cursor:pointer; transition:all .15s; }
+.hdr-btn:hover,.hdr-btn.active { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.biz-badge { font-family:var(--mono); font-size:11px; background:var(--paper2); border:1px solid var(--rule);
+  border-radius:var(--radius); padding:5px 10px; color:var(--ink2); }
+
+/* ── SUMMARY ── */
+.summary { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--rule);
+  border:1px solid var(--rule2); border-radius:var(--radius); overflow:hidden; margin-bottom:24px; animation:fadeUp .4s ease both; }
+.summary-cell { background:var(--paper2); padding:14px 18px; }
+.summary-label { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); }
+.summary-value { font-family:var(--mono); font-size:clamp(14px,2.5vw,19px); font-weight:500; margin-top:3px; }
+.summary-value.pos { color:var(--green); } .summary-value.neg { color:var(--red); }
+.summary-hint { font-family:var(--mono); font-size:10px; color:var(--ink3); margin-top:2px; }
+
+/* ── PERIOD TABS ── */
+.period-tabs { display:flex; gap:2px; margin-bottom:24px; flex-wrap:wrap; animation:fadeUp .4s .05s ease both; }
+.ptab { font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  padding:6px 13px; border:1px solid var(--rule); border-radius:var(--radius);
+  background:transparent; color:var(--ink3); cursor:pointer; transition:all .15s; }
+.ptab:hover { border-color:var(--ink2); color:var(--ink2); }
+.ptab.on { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+
+/* ── ADD PANEL ── */
+.add-panel { background:var(--paper2); border:1px solid var(--rule2); border-radius:var(--radius);
+  padding:20px 24px; margin-bottom:28px; animation:fadeUp .4s .1s ease both; }
+.add-panel h2 { font-family:var(--display); font-size:18px; font-weight:400; font-style:italic;
+  color:var(--ink2); margin-bottom:16px; border-bottom:1px solid var(--rule); padding-bottom:10px; }
+.entry-steps { display:flex; gap:0; margin-bottom:16px; align-items:center; }
+.edot { width:26px; height:26px; border-radius:50%; border:1px solid var(--rule2); background:var(--paper);
+  font-family:var(--mono); font-size:10px; color:var(--ink3);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .2s; }
+.edot.done { background:var(--green); border-color:var(--green); color:#fff; }
+.edot.active { background:var(--ink); border-color:var(--ink); color:var(--paper); }
+.eline { flex:1; height:1px; background:var(--rule); }
+.form-section { display:none; }
+.form-section.active { display:block; animation:fadeUp .25s ease both; }
+.field { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; }
+.field label { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); }
+.field input,.field select { background:var(--paper); border:1px solid var(--rule2); border-radius:var(--radius);
+  padding:9px 12px; font-family:var(--serif); font-size:14px; color:var(--ink);
+  outline:none; transition:border .15s; width:100%; -webkit-appearance:none; }
+.field input:focus,.field select:focus { border-color:var(--accent); }
+.field input::placeholder { color:var(--ink3); font-style:italic; }
+.amount-wrap { position:relative; }
+.amount-wrap .prefix { position:absolute; left:10px; top:50%; transform:translateY(-50%);
+  font-family:var(--mono); font-size:12px; color:var(--ink3); pointer-events:none; }
+.amount-wrap input { padding-left:30px; font-family:var(--mono); }
+.type-btns { display:flex; gap:8px; }
+.type-btn { flex:1; padding:10px 8px; border:1px solid var(--rule2); border-radius:var(--radius);
+  background:var(--paper); font-family:var(--mono); font-size:12px; cursor:pointer; color:var(--ink2); transition:all .15s; text-align:center; line-height:1.4; }
+.type-btn:hover { border-color:var(--ink2); }
+.type-btn.income.on { background:var(--green); color:#fff; border-color:var(--green); }
+.type-btn.expense.on { background:var(--red); color:#fff; border-color:var(--red); }
+.tag-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+.chip { padding:5px 12px; border:1px solid var(--rule); border-radius:99px; font-family:var(--mono);
+  font-size:11px; color:var(--ink2); background:var(--paper); cursor:pointer; transition:all .12s; }
+.chip:hover { border-color:var(--ink2); background:var(--paper3); }
+.chip.on { background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media(max-width:500px){ .two-col { grid-template-columns:1fr; } }
+.form-actions { display:flex; gap:10px; align-items:center; margin-top:6px; }
+.submit-btn { padding:10px 24px; background:var(--ink); color:var(--paper); border:none;
+  border-radius:var(--radius); font-family:var(--mono); font-size:13px; cursor:pointer; transition:opacity .15s,transform .1s; }
+.submit-btn:hover { opacity:.85; } .submit-btn:active { transform:scale(.97); }
+.back-btn { font-family:var(--mono); font-size:12px; color:var(--ink3); background:none; border:none; cursor:pointer; padding:4px; transition:color .15s; }
+.back-btn:hover { color:var(--ink); }
+.next-btn { padding:9px 22px; background:var(--accent); color:#fff; border:none;
+  border-radius:var(--radius); font-family:var(--mono); font-size:12px; cursor:pointer; transition:opacity .15s; }
+.next-btn:hover { opacity:.85; }
+.error-msg { font-family:var(--mono); font-size:11px; color:var(--red); margin-top:6px; min-height:14px; }
+
+/* ── BREAKDOWN ── */
+.breakdown { margin-bottom:24px; animation:fadeUp .4s .12s ease both; }
+.breakdown-title { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-bottom:10px; }
+.breakdown-row { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.breakdown-name { font-family:var(--mono); font-size:11px; color:var(--ink2); width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+.breakdown-bar-wrap { flex:1; height:6px; background:var(--paper3); border-radius:3px; overflow:hidden; }
+.breakdown-bar { height:100%; border-radius:3px; background:var(--green); transition:width .4s ease; }
+.breakdown-bar.exp { background:var(--red); }
+.breakdown-amt { font-family:var(--mono); font-size:11px; color:var(--ink2); text-align:right; min-width:90px; }
+
+/* ── LEDGER ── */
+.ledger-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px; animation:fadeUp .4s .15s ease both; }
+.ledger-head h2 { font-family:var(--display); font-size:20px; font-weight:400; font-style:italic; color:var(--ink2); }
+.ledger-actions { display:flex; gap:6px; }
+.icon-btn { font-family:var(--mono); font-size:11px; border:1px solid var(--rule); background:transparent;
+  color:var(--ink3); padding:5px 10px; border-radius:var(--radius); cursor:pointer; transition:all .15s; }
+.icon-btn:hover { border-color:var(--red); color:var(--red); }
+.ledger { width:100%; border-collapse:collapse; animation:fadeUp .4s .2s ease both; }
+.ledger thead tr { border-bottom:2px solid var(--ink); }
+.ledger th { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink3); font-weight:400; padding:6px 8px 8px; text-align:left; }
+.ledger th.num { text-align:right; }
+.ledger tbody tr { border-bottom:1px solid var(--rule); transition:background .1s; }
+.ledger tbody tr:hover { background:var(--paper3); }
+.ledger td { padding:9px 8px; font-family:var(--serif); font-size:13px; color:var(--ink); vertical-align:middle; }
+.ledger td.date { color:var(--ink3); font-family:var(--mono); font-size:10px; white-space:nowrap; }
+.ledger td.num { text-align:right; font-family:var(--mono); font-size:12px; }
+.badge { display:inline-block; padding:2px 7px; border-radius:3px; font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; }
+.badge.income { background:#d4edda; color:var(--green); }
+.badge.expense { background:#f8d7da; color:var(--red); }
+.cat-pill { display:inline-block; padding:1px 7px; border-radius:99px; font-family:var(--mono); font-size:9px; border:1px solid var(--rule); color:var(--ink3); }
+.amount-pos { color:var(--green); } .amount-neg { color:var(--red); }
+.del-row { background:none; border:none; cursor:pointer; color:var(--rule2); font-size:16px; padding:2px 4px; transition:color .15s; line-height:1; }
+.del-row:hover { color:var(--red); }
+.empty { text-align:center; padding:48px 0; color:var(--ink3); font-style:italic; font-family:var(--display); font-size:18px; }
+
+/* ── MODAL ── */
+#biz-modal { position:fixed; inset:0; background:rgba(26,46,28,.55); z-index:150; display:none; align-items:center; justify-content:center; padding:20px; }
+#biz-modal.open { display:flex; }
+.biz-modal-card { background:var(--paper2); border:1px solid var(--rule2); border-radius:10px; padding:28px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto; animation:fadeUp .25s ease both; }
+.biz-modal-card h3 { font-family:var(--display); font-size:22px; font-style:italic; color:var(--ink2); margin-bottom:16px; }
+.modal-actions { display:flex; gap:8px; margin-top:20px; }
+
+/* ── TOAST ── */
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:var(--ink); color:var(--paper); font-family:var(--mono); font-size:12px; padding:10px 20px; border-radius:99px; pointer-events:none; transition:transform .3s cubic-bezier(.34,1.56,.64,1),opacity .3s; opacity:0; z-index:100; white-space:nowrap; }
+.toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes rowIn { from{opacity:0;background:#d4edda} to{opacity:1;background:transparent} }
+.row-new { animation:rowIn .6s ease both; }
+::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:var(--paper2)} ::-webkit-scrollbar-thumb{background:var(--rule2);border-radius:3px}
+
+/* ── DEBTORS ── */
+.debtors-wrap { margin-bottom:32px; animation:fadeUp .4s .18s ease both; }
+.debtors-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+.debtors-head h2 { font-family:var(--display); font-size:20px; font-weight:400; font-style:italic; color:var(--ink2); }
+.debtors-summary { display:inline-block; font-family:var(--mono); font-size:11px; background:#fff3cd; border:1px solid #f0c14b; border-radius:var(--radius); padding:3px 10px; color:#7a5800; margin-left:10px; vertical-align:middle; }
+.debtor-add { background:var(--paper2); border:1px solid var(--rule2); border-radius:var(--radius); padding:16px 20px; margin-bottom:14px; }
+.debtor-add h3 { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-bottom:12px; }
+.debtor-form { display:grid; grid-template-columns:1fr 1fr auto auto; gap:8px; align-items:end; }
+@media(max-width:560px){ .debtor-form { grid-template-columns:1fr 1fr; } }
+.debtor-form .field { margin-bottom:0; }
+.debtor-table { width:100%; border-collapse:collapse; }
+.debtor-table thead tr { border-bottom:2px solid var(--ink); }
+.debtor-table th { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); font-weight:400; padding:6px 8px 8px; text-align:left; }
+.debtor-table th.num { text-align:right; }
+.debtor-table tbody tr { border-bottom:1px solid var(--rule); transition:background .1s; }
+.debtor-table tbody tr:hover { background:var(--paper3); }
+.debtor-table td { padding:9px 8px; font-family:var(--serif); font-size:13px; color:var(--ink); vertical-align:middle; }
+.debtor-table td.num { text-align:right; font-family:var(--mono); font-size:12px; color:var(--red); font-weight:500; }
+.debtor-table td.date { color:var(--ink3); font-family:var(--mono); font-size:10px; white-space:nowrap; }
+.debtor-table td.note-cell { font-family:var(--mono); font-size:10px; color:var(--ink3); }
+.badge-debtor { display:inline-block; padding:2px 7px; border-radius:3px; font-family:var(--mono); font-size:10px; background:#fff3cd; color:#7a5800; }
+.badge-paid { background:#d4edda; color:var(--green); }
+.mark-paid-btn { background:none; border:1px solid var(--rule); border-radius:var(--radius); font-family:var(--mono); font-size:10px; color:var(--ink3); padding:3px 8px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+.mark-paid-btn:hover { border-color:var(--green); color:var(--green); }
+.debtor-empty { text-align:center; padding:28px 0; color:var(--ink3); font-style:italic; font-family:var(--display); font-size:16px; }
+.sync-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--rule2); margin-left:6px; vertical-align:middle; transition:background .4s; }
+.sync-dot.synced { background:var(--green); }
+.sync-dot.syncing { background:#f0c14b; }
+
+/* ══════════ RESPONSIVE ══════════ */
+
+/* ── Tablet (≤768px) ── */
+@media(max-width:768px){
+  .shell { padding:0 14px 80px; }
+
+  /* Header */
+  header { padding:16px 0 12px; margin-bottom:18px; gap:8px; }
+  .book-title { font-size:clamp(18px,5vw,26px); }
+  .book-sub { font-size:9px; letter-spacing:.07em; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .header-right { gap:5px; }
+  .hdr-btn { font-size:10px; padding:4px 8px; }
+  .biz-badge { font-size:10px; padding:4px 8px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* Summary */
+  .summary { grid-template-columns:1fr 1fr; }
+  .summary-cell:last-child { grid-column:span 2; border-top:1px solid var(--rule2); }
+  .summary-cell { padding:12px 14px; }
+  .summary-value { font-size:clamp(13px,3.5vw,17px); }
+
+  /* Period tabs */
+  .period-tabs { gap:4px; }
+  .ptab { font-size:10px; padding:5px 10px; }
+
+  /* Entry panel */
+  .add-panel { padding:14px 16px; margin-bottom:20px; }
+  .add-panel h2 { font-size:16px; margin-bottom:12px; }
+
+  /* Breakdown */
+  .breakdown-name { width:120px; font-size:10px; }
+  .breakdown-amt { min-width:70px; font-size:10px; }
+
+  /* Ledger – hide category column */
+  .ledger th:nth-child(3), .ledger td:nth-child(3) { display:none; }
+  .ledger td { font-size:12px; padding:8px 6px; }
+  .ledger td.date { font-size:9px; }
+
+  /* Debtors */
+  .debtor-form { grid-template-columns:1fr 1fr; }
+  .debtor-table th:nth-child(3), .debtor-table td:nth-child(3) { display:none; }
+  .debtor-table td { font-size:12px; padding:8px 6px; }
+
+  /* Onboarding card */
+  .ob-card { padding:24px 20px 20px; }
+  .ob-title { font-size:clamp(24px,7vw,36px); }
+  .biz-grid { grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:6px; }
+  .biz-icon { font-size:22px; }
+
+  /* Modal */
+  .biz-modal-card { padding:20px 16px; }
+}
+
+/* ── Mobile (≤480px) ── */
+@media(max-width:480px){
+  .shell { padding:0 10px 90px; }
+
+  /* Header – stack */
+  header { flex-direction:column; align-items:flex-start; padding:12px 0 10px; }
+  .header-right { width:100%; justify-content:flex-start; flex-wrap:wrap; gap:4px; }
+  .biz-badge { display:none; } /* shown in sub already */
+  .book-sub { max-width:100%; white-space:normal; font-size:9px; }
+
+  /* Summary – single column */
+  .summary { grid-template-columns:1fr; }
+  .summary-cell:last-child { grid-column:span 1; border-top:1px solid var(--rule2); }
+  .summary-cell { padding:10px 14px; }
+
+  /* Period tabs – scrollable row */
+  .period-tabs { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .period-tabs::-webkit-scrollbar { display:none; }
+  .ptab { flex-shrink:0; font-size:10px; padding:5px 11px; }
+
+  /* Entry panel */
+  .add-panel { padding:12px 12px; border-radius:var(--radius); }
+  .add-panel h2 { font-size:15px; }
+  .type-btn { font-size:11px; padding:9px 6px; }
+  .entry-steps { margin-bottom:12px; }
+  .edot { width:22px; height:22px; font-size:9px; }
+  .next-btn, .submit-btn { width:100%; text-align:center; }
+  .form-actions { flex-direction:column; align-items:stretch; gap:8px; }
+  .back-btn { text-align:center; }
+
+  /* Chips wrap nicely */
+  .chip { font-size:10px; padding:4px 10px; }
+
+  /* Breakdown */
+  .breakdown-name { width:90px; }
+  .breakdown-amt { min-width:60px; font-size:10px; }
+
+  /* Ledger – hide type column too */
+  .ledger th:nth-child(4), .ledger td:nth-child(4) { display:none; }
+  .ledger th:nth-child(3), .ledger td:nth-child(3) { display:none; }
+  .ledger th, .ledger td { padding:7px 4px; }
+  .ledger td.date { font-size:9px; white-space:normal; }
+  .ledger td { font-size:11px; }
+  .ledger td.num { font-size:11px; }
+  .badge { display:none; } /* hidden on tiny screens, type shown by color */
+
+  /* Debtors */
+  .debtors-head { flex-direction:column; align-items:flex-start; gap:6px; }
+  .debtors-summary { margin-left:0; }
+  .debtor-form { grid-template-columns:1fr; }
+  .debtor-table th:nth-child(3), .debtor-table td:nth-child(3) { display:none; }
+  .debtor-table th:nth-child(4), .debtor-table td:nth-child(4) { display:none; }
+  .debtor-table td { font-size:11px; padding:7px 4px; }
+  .debtor-table td:last-child { display:flex; flex-direction:column; gap:3px; padding:7px 2px; }
+  .mark-paid-btn { font-size:9px; padding:2px 5px; }
+  .debtor-add { padding:12px 12px; }
+
+  /* Onboarding */
+  .ob-card { padding:20px 14px 18px; border-radius:8px; }
+  #onboarding { padding:20px 10px 40px; }
+  .ob-title { font-size:clamp(22px,8vw,32px); }
+  .ob-question { font-size:17px; }
+  .biz-grid { grid-template-columns:repeat(2,1fr); }
+  .ob-btn, .ob-btn-ghost { width:100%; margin-left:0; margin-top:6px; text-align:center; box-sizing:border-box; }
+  .ob-btn-ghost { margin-left:0; }
+
+  /* Toast smaller */
+  .toast { font-size:11px; padding:8px 16px; max-width:90vw; text-align:center; white-space:normal; }
+
+  /* Modal */
+  .biz-modal-card { padding:16px 12px; border-radius:8px; }
+  .modal-actions { flex-direction:column; gap:6px; }
+  .modal-actions .ob-btn, .modal-actions .ob-btn-ghost { width:100%; text-align:center; margin:0; }
+
+  /* Ledger head */
+  .ledger-head { flex-direction:column; align-items:flex-start; gap:6px; }
+  .ledger-actions { width:100%; }
+  .icon-btn { flex:1; text-align:center; }
+}
+
+/* ── Very small (≤360px) ── */
+@media(max-width:360px){
+  .shell { padding:0 8px 90px; }
+  .hdr-btn { font-size:9px; padding:3px 7px; }
+  .ptab { font-size:9px; padding:4px 8px; }
+  .summary-value { font-size:13px; }
+  .biz-grid { grid-template-columns:1fr 1fr; gap:5px; }
+  .biz-card { padding:10px 8px; }
+  .biz-icon { font-size:18px; }
+}
+
+/* ── Large screens (≥1024px) ── */
+@media(min-width:1024px){
+  .shell { padding:0 32px 80px; }
+  header { padding:36px 0 22px; }
+  .debtor-form { grid-template-columns:2fr 1.2fr 2fr auto; }
+}
+
+/* Touch-friendly tap targets */
+@media(hover:none){
+  .chip, .ptab, .hdr-btn, .ob-btn, .submit-btn, .next-btn, .mark-paid-btn,
+  .icon-btn, .type-btn, .biz-card { min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+  .biz-card { display:flex; flex-direction:column; }
+  .del-row { min-width:36px; min-height:36px; display:inline-flex; align-items:center; justify-content:center; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ ONBOARDING ═══════════ -->
+<div id="onboarding">
+<div class="ob-card">
+  <div class="ob-title">Accountant</div>
+  <div class="ob-sub">Sierra Leone · Business Tracker</div>
+  <div class="ob-progress">
+    <div class="ob-dot on" id="dot0"></div>
+    <div class="ob-dot" id="dot1"></div>
+    <div class="ob-dot" id="dot2"></div>
+  </div>
+
+  <div class="ob-step active" id="ob-step0">
+    <div class="ob-label">Step 1 of 3</div>
+    <div class="ob-question">What kind of business do you run?</div>
+    <div class="biz-grid" id="biz-picker"></div>
+    <div class="error-msg" id="ob-err0"></div>
+    <button class="ob-btn" onclick="obNext(0)">Continue →</button>
+  </div>
+
+  <div class="ob-step" id="ob-step1">
+    <div class="ob-label">Step 2 of 3</div>
+    <div class="ob-question">What is the name of your business?</div>
+    <input class="ob-input" id="ob-bizname" placeholder="e.g. Fatima's Boutique" maxlength="50">
+    <div class="error-msg" id="ob-err1"></div>
+    <button class="ob-btn" onclick="obNext(1)">Continue →</button>
+    <button class="ob-btn-ghost" onclick="obBack(0)">← Back</button>
+  </div>
+
+  <div class="ob-step" id="ob-step2">
+    <div class="ob-label">Step 3 of 3</div>
+    <div class="ob-question">Which language do you prefer?</div>
+    <div class="type-btns" style="margin-bottom:20px;max-width:260px">
+      <button class="type-btn income on" id="ob-en" onclick="obSetLang('en')">English</button>
+      <button class="type-btn income" id="ob-kr" onclick="obSetLang('kr')">Krio</button>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="ob-btn" onclick="obFinish()">Start tracking →</button>
+      <button class="ob-btn-ghost" onclick="obBack(1)">← Back</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════ MAIN APP ═══════════ -->
+<div id="app" style="display:none">
+<div class="shell">
+
+  <header>
+    <div>
+      <div class="book-title" id="hdr-title">Accountant</div>
+      <div class="book-sub" id="hdr-sub"></div>
+    </div>
+    <div class="header-right">
+      <span class="biz-badge" id="biz-badge"></span>
+      <button class="hdr-btn active" id="lang-en" onclick="setLang('en')">EN</button>
+      <button class="hdr-btn" id="lang-kr" onclick="setLang('kr')">KR</button>
+      <button class="hdr-btn" onclick="openBizModal()">⚙ Change</button>
+      <span title="Firebase sync status" class="sync-dot" id="sync-dot"></span>
+    </div>
+  </header>
+
+  <div class="summary">
+    <div class="summary-cell">
+      <div class="summary-label" id="lbl-income">Income</div>
+      <div class="summary-value pos" id="sum-income">Le 0</div>
+      <div class="summary-hint" id="sum-period">Today</div>
+    </div>
+    <div class="summary-cell">
+      <div class="summary-label" id="lbl-expense">Expenses</div>
+      <div class="summary-value neg" id="sum-expense">Le 0</div>
+    </div>
+    <div class="summary-cell">
+      <div class="summary-label" id="lbl-profit">Profit</div>
+      <div class="summary-value" id="sum-profit">Le 0</div>
+      <div class="summary-hint" id="sum-insight"></div>
+    </div>
+  </div>
+
+  <div class="period-tabs">
+    <button class="ptab on" data-days="0"  onclick="setPeriod(this)">Today</button>
+    <button class="ptab"    data-days="7"  onclick="setPeriod(this)">7 Days</button>
+    <button class="ptab"    data-days="14" onclick="setPeriod(this)">14 Days</button>
+    <button class="ptab"    data-days="30" onclick="setPeriod(this)">Month</button>
+    <button class="ptab"    data-days="-1" onclick="setPeriod(this)">All</button>
+  </div>
+
+  <!-- ── ENTRY FORM ── -->
+  <div class="add-panel">
+    <h2 id="entry-heading">New Entry</h2>
+    <div class="entry-steps">
+      <div class="edot active" id="edot0">1</div>
+      <div class="eline"></div>
+      <div class="edot" id="edot1">2</div>
+      <div class="eline"></div>
+      <div class="edot" id="edot2">3</div>
+    </div>
+
+    <!-- Step A: Type -->
+    <div class="form-section active" id="esec0">
+      <div class="field">
+        <label id="lbl-type-q">Is this money coming in or going out?</label>
+        <div class="type-btns">
+          <button class="type-btn income" id="btn-income" onclick="setType('income')">
+            <span id="lbl-income-btn">💰 Income<br><small style="opacity:.7;font-size:10px">Sale / payment received</small></span>
+          </button>
+          <button class="type-btn expense" id="btn-expense" onclick="setType('expense')">
+            <span id="lbl-expense-btn">💸 Expense<br><small style="opacity:.7;font-size:10px">Cost / money spent</small></span>
+          </button>
+        </div>
+      </div>
+      <div class="form-actions" style="margin-top:14px">
+        <button class="next-btn" onclick="entryNext(0)">Next →</button>
+      </div>
+      <div class="error-msg" id="eerr0"></div>
+    </div>
+
+    <!-- Step B: Category + item -->
+    <div class="form-section" id="esec1">
+      <div class="field">
+        <label id="lbl-cat">Category</label>
+        <div class="tag-chips" id="cat-chips"></div>
+      </div>
+      <div class="field">
+        <label id="lbl-item">Item / Product</label>
+        <div class="tag-chips" id="item-chips"></div>
+        <input type="text" id="inp-item" placeholder="Or type your own…" maxlength="60" style="margin-top:8px">
+      </div>
+      <div class="form-actions">
+        <button class="next-btn" onclick="entryNext(1)">Next →</button>
+        <button class="back-btn" onclick="entryBack(0)">← Back</button>
+      </div>
+      <div class="error-msg" id="eerr1"></div>
+    </div>
+
+    <!-- Step C: Amount -->
+    <div class="form-section" id="esec2">
+      <div class="two-col">
+        <div class="field">
+          <label id="lbl-amount-f">Amount (Le)</label>
+          <div class="amount-wrap">
+            <span class="prefix">Le</span>
+            <input type="number" id="inp-amount" placeholder="0" min="1" step="any" inputmode="decimal">
+          </div>
+        </div>
+        <div class="field">
+          <label id="lbl-qty">Quantity / Units <span style="color:var(--ink3)">(optional)</span></label>
+          <input type="text" id="inp-qty" placeholder="e.g. 3 bags, 2 dozen" maxlength="40">
+        </div>
+      </div>
+      <div class="field">
+        <label id="lbl-note-f">Extra note <span style="color:var(--ink3)">(optional)</span></label>
+        <input type="text" id="inp-note" placeholder="Any extra detail…" maxlength="80">
+      </div>
+      <div class="form-actions">
+        <button class="submit-btn" onclick="submitEntry()" id="submit-btn">Record ↵</button>
+        <button class="back-btn" onclick="entryBack(1)">← Back</button>
+      </div>
+      <div class="error-msg" id="eerr2"></div>
+    </div>
+  </div>
+
+  <!-- Category breakdown -->
+  <div class="breakdown" id="breakdown-wrap" style="display:none">
+    <div class="breakdown-title" id="lbl-breakdown">Top categories this period</div>
+    <div id="breakdown-bars"></div>
+  </div>
+
+  <!-- ── DEBTORS ── -->
+  <div class="debtors-wrap">
+    <div class="debtors-head">
+      <h2>💳 Debtors <span class="debtors-summary" id="debtors-total">Le 0 outstanding</span></h2>
+      <button class="icon-btn" onclick="toggleDebtorForm()" id="debtor-toggle-btn">+ Add Debtor</button>
+    </div>
+
+    <div class="debtor-add" id="debtor-add-panel" style="display:none">
+      <h3>Record a new debtor</h3>
+      <div class="debtor-form">
+        <div class="field">
+          <label>Name</label>
+          <input type="text" id="deb-name" placeholder="Debtor's name" maxlength="60" class="ob-input" style="margin-bottom:0">
+        </div>
+        <div class="field">
+          <label>Amount Owed (Le)</label>
+          <div class="amount-wrap">
+            <span class="prefix">Le</span>
+            <input type="number" id="deb-amount" placeholder="0" min="1" step="any" inputmode="decimal" style="padding-left:30px;font-family:var(--mono);background:var(--paper);border:1px solid var(--rule2);border-radius:var(--radius);padding-top:9px;padding-bottom:9px;width:100%;outline:none;font-size:14px;color:var(--ink)">
+          </div>
+        </div>
+        <div class="field">
+          <label>Note <span style="color:var(--ink3)">(optional)</span></label>
+          <input type="text" id="deb-note" placeholder="e.g. goods on credit" maxlength="80" class="ob-input" style="margin-bottom:0">
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <button class="submit-btn" onclick="addDebtor()" style="white-space:nowrap">Add ↵</button>
+        </div>
+      </div>
+      <div class="error-msg" id="deb-err" style="margin-top:8px"></div>
+    </div>
+
+    <div id="debtors-empty" class="debtor-empty" style="display:none">No debtors recorded — great!</div>
+    <table class="debtor-table" id="debtors-table" style="display:none">
+      <thead><tr>
+        <th>Date Added</th>
+        <th>Name</th>
+        <th>Note</th>
+        <th>Status</th>
+        <th class="num">Balance</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="debtors-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Ledger -->
+  <div class="ledger-head">
+    <h2 id="lbl-ledger">Ledger</h2>
+    <div class="ledger-actions">
+      <button class="icon-btn" onclick="undoLast()" id="btn-undo">↩ Undo last</button>
+      <button class="icon-btn" onclick="clearAll()" id="btn-clear">Clear all</button>
+    </div>
+  </div>
+
+  <div class="empty" id="empty-state"></div>
+  <table class="ledger" id="ledger-table" style="display:none">
+    <thead><tr>
+      <th id="th-date">Date</th>
+      <th id="th-item">Item</th>
+      <th id="th-cat">Category</th>
+      <th id="th-type">Type</th>
+      <th class="num" id="th-amount">Amount</th>
+      <th></th>
+    </tr></thead>
+    <tbody id="ledger-body"></tbody>
+  </table>
+</div>
+</div>
+
+<!-- Change Business Modal -->
+<div id="biz-modal">
+  <div class="biz-modal-card">
+    <h3 id="modal-title">Change Business Type</h3>
+    <div class="biz-grid" id="modal-biz-picker"></div>
+    <div class="modal-actions">
+      <button class="ob-btn" onclick="applyBizChange()">Apply</button>
+      <button class="ob-btn-ghost" onclick="closeBizModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════ BUSINESS DATA ══════════
+const BUSINESSES = [
+  { id:'boutique', icon:'👗', name:'Boutique', desc:'Fashion & clothing store',
+    incomeCategories:[
+      {name:'Dresses & Gowns',    items:['Casual dress','Evening gown','Ankara dress','Kaba & slit','Jumpsuit','Maxi dress']},
+      {name:'Tops & Blouses',     items:['Blouse','T-shirt','Polo shirt','Crop top','Peplum top','Kaftan']},
+      {name:'Bottoms',            items:['Trousers','Jeans','Skirt','Shorts','Leggings','Palazzos']},
+      {name:'Bags & Accessories', items:['Handbag','Clutch','Belt','Scarf','Hat','Sunglasses','Jewellery','Wallet']},
+      {name:'Shoes',              items:['Heels','Sandals','Sneakers','Flats','Wedges','Slippers']},
+      {name:"Children's wear",    items:['Girl outfit','Boy outfit','Baby clothes','School uniform','Onesie']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Stock / Restock',    items:['New stock purchase','Restock from supplier','Fabric purchase','Imported goods']},
+      {name:'Transport',          items:['Delivery fee','Transport to market','Courier','Import clearing']},
+      {name:'Rent & Utilities',   items:['Shop rent','Electricity','Generator fuel','Water']},
+      {name:'Staff',              items:['Staff salary','Daily allowance','Commission','Apprentice pay']},
+      {name:'Marketing',          items:['Social media ads','Flyers & printing','Packaging','Photography']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'groceries', icon:'🛒', name:'Groceries', desc:'General provisions store',
+    incomeCategories:[
+      {name:'Grains & Staples',   items:['Rice','Flour','Maize','Millet','Bread','Semolina']},
+      {name:'Cooking Essentials', items:['Palm oil','Groundnut oil','Salt','Sugar','Tomato paste','Onion powder']},
+      {name:'Packaged Goods',     items:['Maggi cubes','Noodles','Sardines','Milk tin','Tea / coffee','Custard']},
+      {name:'Household items',    items:['Soap bar','Detergent','Washing powder','Toilet paper','Matches','Candle']},
+      {name:'Beverages',          items:['Water sachet','Soft drink','Juice','Energy drink','Malt','Yoghurt drink']},
+      {name:'Snacks',             items:['Biscuits','Chin-chin','Popcorn','Candy','Chewing gum','Wafers']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Wholesale stock',    items:['Bulk rice','Bulk oil','Mixed goods from wholesaler','Canned goods']},
+      {name:'Transport',          items:['Loading fee','Delivery to shop','Market transport','Truck hire']},
+      {name:'Rent & Utilities',   items:['Shop rent','Electricity','Generator fuel','Water bill']},
+      {name:'Staff',              items:['Staff salary','Daily helper','Casual labour','Security']},
+      {name:'Packaging',          items:['Bags & sachets','Scale repair','Polythene bags']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'clothing-material', icon:'🧵', name:'Clothing Materials', desc:'Fabric & textile shop',
+    incomeCategories:[
+      {name:'Ankara / Wax print', items:['6 yards Ankara','12 yards Ankara','Printed cotton wax','Hollandais wax','Java print']},
+      {name:'Plain fabrics',      items:['Plain cotton','Linen','Organza','Satin','Chiffon','Velvet','Polyester']},
+      {name:'Lace & Net',         items:['French lace','Swiss lace','Guipure lace','Net fabric','Sequin lace','Cord lace']},
+      {name:'Traditional fabrics',items:['Damask / Bazin','Brocade','Aso-oke','Kente cloth','Fela print','George fabric']},
+      {name:'Accessories',        items:['Thread','Zip','Button','Elastic','Lining fabric','Shoulder pad','Fusible interlining']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Stock / Restock',    items:['Fabric from supplier','Lace purchase','Accessories restock','Clearing from port']},
+      {name:'Transport',          items:['Clearing & forwarding','Transport to market','Delivery to customers']},
+      {name:'Rent & Utilities',   items:['Shop rent','Electricity','Water','Generator fuel']},
+      {name:'Staff',              items:['Staff salary','Sales assistant','Security','Commission']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'fruits-veg', icon:'🍅', name:'Fruits & Vegetables', desc:'Fresh produce market',
+    incomeCategories:[
+      {name:'Vegetables',         items:['Tomatoes','Onions','Hot pepper','Okra','Bitter leaf','Cabbage','Carrot','Garden egg','Cucumber','Green beans']},
+      {name:'Leafy greens',       items:['Spinach','Cassava leaf','Sweet potato leaf','Lettuce','Kale','Pumpkin leaf']},
+      {name:'Root vegetables',    items:['Cassava','Yam','Sweet potato','Irish potato','Ginger','Garlic','Beetroot']},
+      {name:'Local fruits',       items:['Mango','Pineapple','Pawpaw','Banana','Coconut','Avocado','Orange','Watermelon','Lime']},
+      {name:'Spices & herbs',     items:['Fresh pepper','Scent leaf','Thyme','Bay leaves','Lemongrass','Uziza leaf']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Produce purchase',   items:['Farm purchase','Wholesale market buy','Farmer direct payment','Cooperative buy']},
+      {name:'Transport',          items:['Transport from farm','Market keke / truck fee','Delivery to customer']},
+      {name:'Storage & tools',    items:['Ice / cold water','Baskets & trays','Sacks & crates','Weighing scale']},
+      {name:'Market fees',        items:['Market levy','Stall rent','Association fee','Loading fee']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'cosmetics', icon:'💄', name:'Cosmetics', desc:'Beauty & personal care',
+    incomeCategories:[
+      {name:'Skincare',           items:['Face cream','Body lotion','Serum','Sunscreen','Toner','Face wash','Shea butter','Body butter']},
+      {name:'Hair care',          items:['Hair weave / extension','Wig','Hair cream','Relaxer kit','Hair oil','Edges & edges cream','Hair food']},
+      {name:'Makeup',             items:['Foundation','Lipstick','Mascara','Eye shadow palette','Blusher','Concealer','Setting powder','Eyeliner']},
+      {name:'Fragrances',         items:['Perfume','Body spray','Roll-on deodorant','Scented oil','Incense']},
+      {name:'Nails',              items:['Nail polish','Nail kit set','Press-on nails','Nail gel','Nail art tools']},
+      {name:'Personal hygiene',   items:['Soap bar','Intimate wash','Body scrub','Deodorant stick','Feminine products']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Stock / Restock',    items:['Skincare restock','Makeup restock','Hair products restock','Fragrance restock']},
+      {name:'Transport',          items:['Delivery fee','Import transport','Customs clearance','Courier']},
+      {name:'Rent & Utilities',   items:['Shop rent','Electricity','Display materials / fridge']},
+      {name:'Staff',              items:['Staff salary','Beauty assistant','Commission pay']},
+      {name:'Marketing',          items:['Instagram / Facebook ads','Packaging','Product photography','Influencer']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'food-canteen', icon:'🍲', name:'Food / Canteen', desc:'Restaurant or food stall',
+    incomeCategories:[
+      {name:'Rice dishes',        items:['Plain rice & stew','Jollof rice','Fried rice','Benachin','Rice & groundnut soup','Rice & okra soup']},
+      {name:'Soups & Stews',      items:['Groundnut soup','Pepper soup','Okra soup','Cassava leaf stew','Palm butter soup','Egusi soup']},
+      {name:'Sides & Proteins',   items:['Fried plantain','Fried fish','Grilled chicken','Boiled egg','Akara fritters','Fufu / dumboy']},
+      {name:'Drinks',             items:['Water sachet','Soft drink','Fresh juice','Ginger beer','Sobolo','Milk tea']},
+      {name:'Breakfast plates',   items:['Tea & bread','Oats / porridge','Cornmeal porridge','Pancake','Omelette & bread']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Food ingredients',   items:['Rice & grains','Vegetables & tomatoes','Meat & fish','Palm oil & spices','Seasoning cubes']},
+      {name:'Cooking energy',     items:['Gas cylinder refill','Charcoal bag','Firewood','Kerosene']},
+      {name:'Equipment & supplies',items:['Pots & pans repair','Plates & cutlery','Generator fuel','Napkins & packaging']},
+      {name:'Rent & Utilities',   items:['Stall / shop rent','Electricity','Water purchase','Market levy']},
+      {name:'Staff',              items:['Cook salary','Helper / server salary','Cleaner pay','Daily casual']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'electronics', icon:'📱', name:'Electronics', desc:'Phones, gadgets & repairs',
+    incomeCategories:[
+      {name:'Phones & Tablets',   items:['New smartphone','Used / refurb smartphone','Feature phone','Tablet','iPad']},
+      {name:'Accessories',        items:['Charger & cable','Earphone / AirPods','Phone case','Screen protector','Power bank','Memory card']},
+      {name:'Repair services',    items:['Screen replacement','Battery replacement','Software / unlock','Water damage fix','General repair']},
+      {name:'Appliances',         items:['Rechargeable lamp','Radio','Portable fan','Electric iron','Blender / mixer']},
+      {name:'Airtime & Data',     items:['Africell airtime','Orange airtime','Qcell airtime','Data bundle','Mobile money topup']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Stock & Parts',      items:['Phone stock purchase','Spare parts','Accessories stock','Screen & battery stock']},
+      {name:'Transport',          items:['Delivery to shop','Customs clearance','Import transport','Courier']},
+      {name:'Rent & Utilities',   items:['Shop rent','Electricity','Generator fuel','Internet']},
+      {name:'Tools & Equipment',  items:['Repair tools','Soldering iron','Diagnostic machine','Microscope']},
+      {name:'Staff',              items:['Technician salary','Sales staff salary','Commission','Apprentice allowance']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'pharmacy', icon:'💊', name:'Pharmacy / Medicine', desc:'Drug store & health products',
+    incomeCategories:[
+      {name:'Prescription drugs', items:['Antibiotics','Antimalarials','Blood pressure meds','Diabetes medication','HIV/ARV drugs']},
+      {name:'OTC medicines',      items:['Paracetamol','Ibuprofen','Antacid tablets','Cough syrup','Vitamin supplements','Rehydration salts']},
+      {name:'Baby & Maternal',    items:['Baby formula','Folic acid','Iron supplements','Diapers / nappies','Baby cream & powder']},
+      {name:'Wound & First aid',  items:['Plasters / bandage','Antiseptic solution','Gauze & cotton wool','Surgical gloves','Syringe']},
+      {name:'Health devices',     items:['Mosquito net','Thermometer','BP monitor','Blood glucose strips','Pregnancy test kit']},
+      {name:'Other sale',         items:[]},
+    ],
+    expenseCategories:[
+      {name:'Drug stock',         items:['Wholesale drugs purchase','Restock from distributor','Cold-chain / refrigerated drugs','Controlled substance order']},
+      {name:'Rent & Utilities',   items:['Shop rent','Electricity','Refrigerator / cold room power','Water']},
+      {name:'Licences & fees',    items:['Pharmacy board fee','Business licence renewal','Professional association dues']},
+      {name:'Staff',              items:['Pharmacist salary','Sales assistant','Security','Cleaner']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'salon', icon:'✂️', name:'Hair Salon / Barber', desc:'Hair styling & grooming',
+    incomeCategories:[
+      {name:"Women's services",   items:['Box braids','Ghana weaving','Weave fixing','Relaxer & set','Natural hair styling','Wig installation','Loc maintenance']},
+      {name:"Men's services",     items:['Haircut (low cut)','Shaving','Beard trim & line-up','Hair wash','Colouring']},
+      {name:'Treatments',         items:['Deep conditioning','Protein treatment','Hair colouring','Scalp massage','Keratin treatment']},
+      {name:'Nail services',      items:['Manicure','Pedicure','Gel nails','Acrylic nails','Nail art']},
+      {name:'Product sales',      items:['Relaxer kit sold','Hair cream sold','Wig sold','Hair extension sold','Shampoo & conditioner']},
+      {name:'Other service',      items:[]},
+    ],
+    expenseCategories:[
+      {name:'Products & supplies',items:['Relaxer & dye stock','Hair cream & oil','Scissors & clippers','Disposable items (gloves, capes)']},
+      {name:'Equipment',          items:['Dryer repair / purchase','Clipper repair','Steamer','Chair & mirror','Nail lamp']},
+      {name:'Rent & Utilities',   items:['Shop rent','Electricity','Generator fuel','Water']},
+      {name:'Staff',              items:['Stylist salary','Apprentice allowance','Commission pay','Receptionist']},
+      {name:'Other expense',      items:[]},
+    ]},
+  { id:'other', icon:'🏪', name:'Other Business', desc:'Any other type of business',
+    incomeCategories:[
+      {name:'Product sales',      items:['Main product','Secondary product','Bulk / wholesale order','Retail sale']},
+      {name:'Services',           items:['Service fee','Consultation fee','Labour / work charge','Delivery charge']},
+      {name:'Other income',       items:[]},
+    ],
+    expenseCategories:[
+      {name:'Stock & supplies',   items:['Stock purchase','Raw materials','Restock / replenish']},
+      {name:'Transport',          items:['Delivery cost','Transport fare','Fuel','Courier fee']},
+      {name:'Rent & Utilities',   items:['Rent','Electricity','Water','Generator fuel']},
+      {name:'Staff',              items:['Salary','Daily pay','Commission','Allowance']},
+      {name:'Other expense',      items:[]},
+    ]},
+];
+
+// ══════════ TRANSLATIONS ══════════
+const T = {
+  en:{
+    newEntry:'New Entry',income:'Income',expense:'Expenses',profit:'Profit',
+    typeQ:'Is this money coming in or going out?',
+    incomeLbl:'💰 Income',incomeSub:'Sale / payment received',
+    expenseLbl:'💸 Expense',expenseSub:'Cost / money spent',
+    catLabel:'Category',itemLabel:'Item / Product',typeOwn:'Or type your own…',
+    amountLabel:'Amount (Le)',qtyLabel:'Quantity / Units (optional)',
+    noteLabel:'Extra note (optional)',noteHint:'Any extra detail…',
+    recordBtn:'Record ↵',saved:'Saved!',deleted:'Entry deleted.',
+    undoLast:'↩ Undo last',clearAll:'Clear all',
+    undone:'Last entry deleted.',cleared:'All cleared.',
+    confirmClear:'Delete ALL transactions? This cannot be undone.',
+    nothing:'Nothing to undo.',ledger:'Ledger',breakdown:'Top categories this period',
+    emptyState:'No entries yet — record your first transaction above.',
+    today:'Today',days7:'Last 7 days',days14:'Last 14 days',days30:'Last 30 days',allTime:'All time',
+    profit_up:'Making profit',profit_down:'Spending more than earned',profit_even:'Breaking even',
+    selectCatErr:'Please select a category first.',selectItemErr:'Please enter an item or product.',
+    enterAmountErr:'Please enter a valid amount greater than 0.',
+    thDate:'Date',thItem:'Item',thCat:'Category',thType:'Type',thAmount:'Amount',
+    changeBiz:'Change Business Type',
+  },
+  kr:{
+    newEntry:'New Entry',income:'Money In',expense:'Money Out',profit:'Profit',
+    typeQ:'Na money come in or go out?',
+    incomeLbl:'💰 Income',incomeSub:'Sell / payment receive',
+    expenseLbl:'💸 Expense',expenseSub:'Cost / money wey yu spend',
+    catLabel:'Category',itemLabel:'Wetin yu sell / buy?',typeOwn:'Or type am yourself…',
+    amountLabel:'Amount (Le)',qtyLabel:'How many? (optional)',
+    noteLabel:'Extra note (optional)',noteHint:'Any extra detail…',
+    recordBtn:'Save ↵',saved:'Don save!',deleted:'Entry don delete.',
+    undoLast:'↩ Undo last',clearAll:'Clear all',
+    undone:'Last entry delete.',cleared:'Everything clear.',
+    confirmClear:'Delete ALL transactions? Dis no fit undo.',
+    nothing:'Nothing for undo.',ledger:'Records',breakdown:'Top categories dis period',
+    emptyState:'No entries yet — add your first entry up there.',
+    today:'Today',days7:'Last 7 days',days14:'Last 14 days',days30:'Last 30 days',allTime:'All time',
+    profit_up:'Yu dey profit!',profit_down:'Yu dey lose money!',profit_even:'Even — no profit yet',
+    selectCatErr:'Choose one category first.',selectItemErr:'Enter wetin yu sell or buy.',
+    enterAmountErr:'Enter valid amount wey pass 0.',
+    thDate:'Date',thItem:'Item',thCat:'Category',thType:'Type',thAmount:'Amount',
+    changeBiz:'Change Business',
+  }
+};
+function t(k){ return (T[lang]||T.en)[k]||k; }
+
+// ══════════ STATE ══════════
+const SK = 'accountant-sl-v2';
+let lang='en', activePeriod=0, selectedType='income', selectedCat=null, selectedItem='';
+let obLang='en', obBizId=null, modalBizId=null, entryStep=0;
+window._appBooted = false;
+
+function loadAll(){ try{ return JSON.parse(localStorage.getItem(SK))||{}; }catch{ return {}; } }
+function saveAll(d){
+  localStorage.setItem(SK,JSON.stringify(d));
+  // Push to Firebase if available
+  if(window._fbSave){
+    setSyncDot('syncing');
+    window._fbSave(d).then(()=>setSyncDot('synced')).catch(()=>setSyncDot(''));
+  }
+}
+function getSettings(){ return loadAll()._settings||null; }
+function saveSettings(s){ const d=loadAll(); d._settings=s; saveAll(d); }
+function getRecords(){ return loadAll()._records||[]; }
+function saveRecords(r){ const d=loadAll(); d._records=r; saveAll(d); }
+function getDebtors(){ return loadAll()._debtors||[]; }
+function saveDebtors(arr){ const d=loadAll(); d._debtors=arr; saveAll(d); }
+
+function setSyncDot(state){
+  const el=document.getElementById('sync-dot'); if(!el) return;
+  el.className='sync-dot'+(state?' '+state:'');
+  el.title=state==='synced'?'Saved to cloud':state==='syncing'?'Syncing…':'Cloud sync';
+}
+
+// ══════════ DEBTORS ══════════
+function toggleDebtorForm(){
+  const p=document.getElementById('debtor-add-panel');
+  const btn=document.getElementById('debtor-toggle-btn');
+  const open=p.style.display==='none';
+  p.style.display=open?'':'none';
+  btn.textContent=open?'✕ Close':'+ Add Debtor';
+}
+function addDebtor(){
+  const name=document.getElementById('deb-name').value.trim();
+  const rawAmt=document.getElementById('deb-amount').value.trim();
+  const note=document.getElementById('deb-note').value.trim();
+  const errEl=document.getElementById('deb-err'); errEl.textContent='';
+  if(!name){ errEl.textContent='Please enter the debtor\'s name.'; return; }
+  const amount=parseFloat(rawAmt.replace(/,/g,''));
+  if(!rawAmt||isNaN(amount)||amount<=0){ errEl.textContent='Please enter a valid amount greater than 0.'; return; }
+  const debtors=getDebtors();
+  debtors.push({id:Date.now(),name,amount,note:note||'',paid:false,date:new Date().toISOString()});
+  saveDebtors(debtors);
+  document.getElementById('deb-name').value='';
+  document.getElementById('deb-amount').value='';
+  document.getElementById('deb-note').value='';
+  renderDebtors();
+  toast(`Debtor added: ${name} — ${fmt(amount)}`);
+}
+function markDebtorPaid(id){
+  const debtors=getDebtors();
+  const d=debtors.find(x=>x.id===id); if(!d) return;
+  d.paid=!d.paid;
+  saveDebtors(debtors); renderDebtors();
+  toast(d.paid?`${d.name} marked as paid ✓`:`${d.name} marked as outstanding`);
+}
+function deleteDebtor(id){
+  saveDebtors(getDebtors().filter(x=>x.id!==id)); renderDebtors(); toast('Debtor removed.');
+}
+function renderDebtors(){
+  const all=getDebtors();
+  const outstanding=all.filter(d=>!d.paid).reduce((s,d)=>s+d.amount,0);
+  document.getElementById('debtors-total').textContent=fmt(outstanding)+' outstanding';
+  const empty=document.getElementById('debtors-empty');
+  const table=document.getElementById('debtors-table');
+  if(!all.length){ empty.style.display=''; table.style.display='none'; return; }
+  empty.style.display='none'; table.style.display='';
+  const tbody=document.getElementById('debtors-body'); tbody.innerHTML='';
+  [...all].reverse().forEach(d=>{
+    const tr=document.createElement('tr');
+    const statusBadge=d.paid
+      ?`<span class="badge-debtor badge-paid">Paid</span>`
+      :`<span class="badge-debtor">Owes</span>`;
+    const amtCls=d.paid?'num" style="text-decoration:line-through;opacity:.5':'num';
+    tr.innerHTML=`
+      <td class="date">${fmtDate(d.date)}</td>
+      <td><strong>${esc(d.name)}</strong></td>
+      <td class="note-cell">${esc(d.note)||'—'}</td>
+      <td>${statusBadge}</td>
+      <td class="${amtCls}">${fmt(d.amount)}</td>
+      <td style="display:flex;gap:4px;align-items:center;padding:9px 4px">
+        <button class="mark-paid-btn" onclick="markDebtorPaid(${d.id})">${d.paid?'Undo':'✓ Paid'}</button>
+        <button class="del-row" onclick="deleteDebtor(${d.id})" title="Delete">×</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ══════════ ONBOARDING ══════════
+function buildBizGrid(containerId, onSelect){
+  const el=document.getElementById(containerId); el.innerHTML='';
+  BUSINESSES.forEach(b=>{
+    const d=document.createElement('div');
+    d.className='biz-card'; d.dataset.id=b.id;
+    d.innerHTML=`<div class="biz-icon">${b.icon}</div><div class="biz-name">${b.name}</div><div class="biz-desc">${b.desc}</div>`;
+    d.onclick=()=>{ el.querySelectorAll('.biz-card').forEach(c=>c.classList.remove('on')); d.classList.add('on'); onSelect(b.id); };
+    el.appendChild(d);
+  });
+}
+function obSetLang(l){
+  obLang=l;
+  document.getElementById('ob-en').classList.toggle('on',l==='en');
+  document.getElementById('ob-kr').classList.toggle('on',l==='kr');
+}
+function obNext(step){
+  if(step===0){
+    if(!obBizId){ document.getElementById('ob-err0').textContent='Please select a business type.'; return; }
+    document.getElementById('ob-err0').textContent='';
+    showObStep(1);
+  } else if(step===1){
+    const name=document.getElementById('ob-bizname').value.trim();
+    if(!name){ document.getElementById('ob-err1').textContent='Please enter your business name.'; return; }
+    document.getElementById('ob-err1').textContent=''; showObStep(2);
+  }
+}
+function obBack(n){ showObStep(n); }
+function showObStep(n){
+  document.querySelectorAll('.ob-step').forEach((s,i)=>s.classList.toggle('active',i===n));
+  document.querySelectorAll('.ob-dot').forEach((d,i)=>d.classList.toggle('on',i<=n));
+}
+function obFinish(){
+  const name=document.getElementById('ob-bizname').value.trim();
+  saveSettings({bizId:obBizId,bizName:name,lang:obLang});
+  lang=obLang;
+  document.getElementById('onboarding').style.display='none';
+  document.getElementById('app').style.display='';
+  initApp();
+}
+
+// ══════════ APP INIT ══════════
+function initApp(){
+  const s=getSettings(); if(!s) return;
+  window._appBooted = true;
+  lang=s.lang||'en';
+  const biz=BUSINESSES.find(b=>b.id===s.bizId)||BUSINESSES[0];
+  document.getElementById('hdr-title').textContent=s.bizName;
+  document.getElementById('hdr-sub').textContent=`${biz.icon} ${biz.name} · Sierra Leone · Le · ${new Date().toLocaleDateString('en-SL',{day:'2-digit',month:'short',year:'numeric'})}`;
+  document.getElementById('biz-badge').textContent=`${biz.icon} ${biz.name}`;
+  updateLangUI(); setType('income'); render(); buildEntryStep1(); renderDebtors();
+  if(window._fbReady) setSyncDot('synced'); else setSyncDot('');
+}
+
+// ══════════ LANGUAGE ══════════
+function setLang(l){
+  lang=l; const s=getSettings(); if(s){s.lang=l;saveSettings(s);}
+  updateLangUI(); render(); buildEntryStep1();
+}
+function updateLangUI(){
+  document.getElementById('lang-en').classList.toggle('active',lang==='en');
+  document.getElementById('lang-kr').classList.toggle('active',lang==='kr');
+  const map={
+    'lbl-income':t('income'),'lbl-expense':t('expense'),'lbl-profit':t('profit'),
+    'entry-heading':t('newEntry'),'lbl-cat':t('catLabel'),'lbl-item':t('itemLabel'),
+    'lbl-amount-f':t('amountLabel'),'submit-btn':t('recordBtn'),
+    'btn-undo':t('undoLast'),'btn-clear':t('clearAll'),
+    'lbl-ledger':t('ledger'),'lbl-breakdown':t('breakdown'),
+    'th-date':t('thDate'),'th-item':t('thItem'),'th-cat':t('thCat'),'th-type':t('thType'),'th-amount':t('thAmount'),
+    'modal-title':t('changeBiz'),
+  };
+  Object.entries(map).forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent=val; });
+  document.getElementById('lbl-income-btn').innerHTML=`${t('incomeLbl')}<br><small style="opacity:.7;font-size:10px">${t('incomeSub')}</small>`;
+  document.getElementById('lbl-expense-btn').innerHTML=`${t('expenseLbl')}<br><small style="opacity:.7;font-size:10px">${t('expenseSub')}</small>`;
+  document.getElementById('lbl-type-q').textContent=t('typeQ');
+  document.getElementById('lbl-qty').innerHTML=`${t('qtyLabel')}`;
+  document.getElementById('lbl-note-f').innerHTML=`${t('noteLabel')}`;
+  document.getElementById('inp-item').placeholder=t('typeOwn');
+  document.getElementById('inp-note').placeholder=t('noteHint');
+}
+
+// ══════════ PERIOD ══════════
+function setPeriod(btn){
+  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on'); activePeriod=parseInt(btn.dataset.days); render();
+}
+function filterRecords(recs,days){
+  if(days===-1) return recs;
+  if(days===0){ const today=new Date().toDateString(); return recs.filter(r=>new Date(r.date).toDateString()===today); }
+  const cut=new Date(); cut.setDate(cut.getDate()-days); return recs.filter(r=>new Date(r.date)>=cut);
+}
+
+// ══════════ ENTRY FLOW ══════════
+function setType(type){
+  selectedType=type;
+  document.getElementById('btn-income').classList.toggle('on',type==='income');
+  document.getElementById('btn-expense').classList.toggle('on',type==='expense');
+}
+function showEntryStep(n){
+  entryStep=n;
+  [0,1,2].forEach(i=>{
+    document.getElementById(`esec${i}`).classList.toggle('active',i===n);
+    const dot=document.getElementById(`edot${i}`);
+    dot.classList.remove('active','done');
+    if(i===n) dot.classList.add('active');
+    else if(i<n) dot.classList.add('done');
+  });
+  if(n===1) buildEntryStep1();
+}
+function entryNext(from){
+  if(from===0){ document.getElementById('eerr0').textContent=''; showEntryStep(1); }
+  else if(from===1){
+    const item=selectedItem||document.getElementById('inp-item').value.trim();
+    if(!selectedCat){ document.getElementById('eerr1').textContent=t('selectCatErr'); return; }
+    if(!item){ document.getElementById('eerr1').textContent=t('selectItemErr'); return; }
+    document.getElementById('eerr1').textContent=''; selectedItem=item;
+    showEntryStep(2); document.getElementById('inp-amount').focus();
+  }
+}
+function entryBack(to){ showEntryStep(to); }
+
+function buildEntryStep1(){
+  const s=getSettings(); if(!s) return;
+  const biz=BUSINESSES.find(b=>b.id===s.bizId)||BUSINESSES[0];
+  const cats=selectedType==='income'?biz.incomeCategories:biz.expenseCategories;
+  selectedCat=null; selectedItem='';
+  document.getElementById('inp-item').value='';
+  const catEl=document.getElementById('cat-chips'); catEl.innerHTML='';
+  cats.forEach(cat=>{
+    const ch=document.createElement('button'); ch.className='chip'; ch.textContent=cat.name;
+    ch.onclick=()=>{
+      catEl.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+      ch.classList.add('on'); selectedCat=cat.name; selectedItem='';
+      buildItemChips(cat.items);
+    };
+    catEl.appendChild(ch);
+  });
+  document.getElementById('item-chips').innerHTML='';
+}
+function buildItemChips(items){
+  const wrap=document.getElementById('item-chips'); wrap.innerHTML='';
+  selectedItem=''; document.getElementById('inp-item').value='';
+  items.forEach(item=>{
+    const ch=document.createElement('button'); ch.className='chip'; ch.textContent=item;
+    ch.onclick=()=>{
+      wrap.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+      ch.classList.add('on'); selectedItem=item; document.getElementById('inp-item').value='';
+    };
+    wrap.appendChild(ch);
+  });
+}
+
+// ══════════ SUBMIT ══════════
+function submitEntry(){
+  const rawAmt=document.getElementById('inp-amount').value.trim();
+  const qty=document.getElementById('inp-qty').value.trim();
+  const note=document.getElementById('inp-note').value.trim();
+  const item=selectedItem||document.getElementById('inp-item').value.trim();
+  const errEl=document.getElementById('eerr2'); errEl.textContent='';
+  const amount=parseFloat(rawAmt.replace(/,/g,''));
+  if(!rawAmt||isNaN(amount)||amount<=0){ errEl.textContent=t('enterAmountErr'); return; }
+  if(amount>1000000000){ errEl.textContent='Amount too large.'; return; }
+  const records=getRecords();
+  const entry={id:Date.now(),type:selectedType,amount,category:selectedCat||'—',item:item||'—',qty:qty||'',note:note||'',date:new Date().toISOString()};
+  records.push(entry); saveRecords(records);
+  document.getElementById('inp-amount').value='';
+  document.getElementById('inp-qty').value='';
+  document.getElementById('inp-note').value='';
+  selectedCat=null; selectedItem='';
+  showEntryStep(0); setType('income');
+  render(entry.id);
+  toast(`${t('saved')} ${entry.type==='income'?t('income'):t('expense')}: ${fmt(amount)}`);
+}
+
+// ══════════ DELETE / UNDO / CLEAR ══════════
+function deleteRow(id){ saveRecords(getRecords().filter(r=>r.id!==id)); render(); toast(t('deleted')); }
+function undoLast(){
+  const recs=getRecords(); if(!recs.length){ toast(t('nothing')); return; }
+  const removed=recs.pop(); saveRecords(recs); render(); toast(`${t('undone')}: ${fmt(removed.amount)}`);
+}
+function clearAll(){
+  if(!confirm(t('confirmClear'))) return;
+  saveRecords([]); render(); toast(t('cleared'));
+}
+
+// ══════════ CHANGE BUSINESS ══════════
+function openBizModal(){
+  modalBizId=getSettings()?.bizId||null;
+  buildBizGrid('modal-biz-picker',id=>{ modalBizId=id; });
+  if(modalBizId){
+    const c=document.querySelector(`#modal-biz-picker .biz-card[data-id="${modalBizId}"]`);
+    if(c) c.classList.add('on');
+  }
+  document.getElementById('biz-modal').classList.add('open');
+}
+function closeBizModal(){ document.getElementById('biz-modal').classList.remove('open'); }
+function applyBizChange(){
+  if(!modalBizId) return;
+  const s=getSettings(); s.bizId=modalBizId; saveSettings(s);
+  closeBizModal();
+  const biz=BUSINESSES.find(b=>b.id===modalBizId)||BUSINESSES[0];
+  document.getElementById('biz-badge').textContent=`${biz.icon} ${biz.name}`;
+  document.getElementById('hdr-sub').textContent=`${biz.icon} ${biz.name} · Sierra Leone · Le · ${new Date().toLocaleDateString('en-SL',{day:'2-digit',month:'short',year:'numeric'})}`;
+  buildEntryStep1(); render(); toast('Business type updated!');
+}
+
+// ══════════ RENDER ══════════
+function render(newId){
+  const all=getRecords(); const filtered=filterRecords(all,activePeriod);
+  let income=0,expense=0;
+  filtered.forEach(r=>{ if(r.type==='income') income+=r.amount; else expense+=r.amount; });
+  const profit=income-expense;
+  document.getElementById('sum-income').textContent=fmt(income);
+  document.getElementById('sum-expense').textContent=fmt(expense);
+  const pe=document.getElementById('sum-profit');
+  pe.textContent=(profit>=0?'':'−')+fmt(profit);
+  pe.className='summary-value '+(profit>0?'pos':profit<0?'neg':'');
+  const pm={0:t('today'),7:t('days7'),14:t('days14'),30:t('days30'),'-1':t('allTime')};
+  document.getElementById('sum-period').textContent=pm[activePeriod]||'';
+  document.getElementById('sum-insight').textContent=profit>0?t('profit_up'):profit<0?t('profit_down'):t('profit_even');
+
+  // Breakdown bars
+  const totals={};
+  filtered.forEach(r=>{ const k=r.category+'|'+r.type; totals[k]=(totals[k]||0)+r.amount; });
+  const entries=Object.entries(totals).map(([k,v])=>{ const[cat,type]=k.split('|'); return{cat,type,v}; }).sort((a,b)=>b.v-a.v).slice(0,6);
+  const bwrap=document.getElementById('breakdown-bars'); bwrap.innerHTML='';
+  if(entries.length){
+    document.getElementById('breakdown-wrap').style.display='';
+    const max=Math.max(...entries.map(e=>e.v));
+    entries.forEach(e=>{
+      const pct=max>0?(e.v/max*100).toFixed(1):0;
+      const div=document.createElement('div'); div.className='breakdown-row';
+      div.innerHTML=`<div class="breakdown-name">${esc(e.cat)}</div><div class="breakdown-bar-wrap"><div class="breakdown-bar${e.type==='expense'?' exp':''}" style="width:${pct}%"></div></div><div class="breakdown-amt">${fmt(e.v)}</div>`;
+      bwrap.appendChild(div);
+    });
+  } else { document.getElementById('breakdown-wrap').style.display='none'; }
+
+  // Table
+  const sorted=[...filtered].reverse();
+  const empty=document.getElementById('empty-state');
+  const table=document.getElementById('ledger-table');
+  if(!sorted.length){
+    empty.style.display=''; empty.textContent=t('emptyState'); table.style.display='none'; return;
+  }
+  empty.style.display='none'; table.style.display='';
+  const tbody=document.getElementById('ledger-body'); tbody.innerHTML='';
+  sorted.forEach(r=>{
+    const tr=document.createElement('tr'); if(r.id===newId) tr.className='row-new';
+    const sign=r.type==='income'?'+':'−';
+    const cls=r.type==='income'?'amount-pos':'amount-neg';
+    const badge=r.type==='income'?`<span class="badge income">${t('income')}</span>`:`<span class="badge expense">${t('expense')}</span>`;
+    const itemLine=[esc(r.item),r.qty?esc(r.qty):''].filter(Boolean).join(' · ');
+    const noteLine=r.note?`<br><span style="font-family:var(--mono);font-size:10px;color:var(--ink3)">${esc(r.note)}</span>`:'';
+    tr.innerHTML=`<td class="date">${fmtDate(r.date)}</td><td>${itemLine}${noteLine}</td><td><span class="cat-pill">${esc(r.category)}</span></td><td>${badge}</td><td class="num ${cls}">${sign}&nbsp;${fmt(r.amount)}</td><td><button class="del-row" onclick="deleteRow(${r.id})" title="Delete">×</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ══════════ UTILS ══════════
+function fmt(n){ return 'Le\u00a0'+Math.abs(n).toLocaleString('en'); }
+function fmtDate(iso){ return new Date(iso).toLocaleDateString('en-SL',{day:'2-digit',month:'short',year:'numeric'}); }
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(msg){
+  const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+// ══════════ KEYBOARD ══════════
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    if(['inp-amount','inp-note','inp-qty'].includes(e.target.id)) submitEntry();
+    if(e.target.id==='ob-bizname') obNext(1);
+  }
+  if(e.key==='Escape') closeBizModal();
+});
+
+// ══════════ BOOT ══════════
+(function boot(){
+  buildBizGrid('biz-picker',id=>{ obBizId=id; });
+  obSetLang('en');
+  const s=getSettings();
+  if(s&&s.bizId&&s.bizName){
+    document.getElementById('onboarding').style.display='none';
+    document.getElementById('app').style.display='';
+    initApp();
+  }
+})();
+</script>
+</body>
+</html>
