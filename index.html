@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>FA Accountant — Sierra Leone</title>
 <meta name="description" content="FinancialAccounting bot for Sierra Leone businesses">
 <meta name="theme-color" content="#14321a">
@@ -148,8 +148,10 @@ body { background: var(--paper); color: var(--ink); font-family: var(--serif); m
 .auth-field { text-align:left; margin-bottom:14px; }
 .auth-field label { font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
   color:var(--ink3); display:block; margin-bottom:6px; }
+/* Prevent iOS auto-zoom on input focus */
+input, select, textarea { font-size:16px !important; }
 .auth-input { width:100%; background:var(--paper); border:1px solid var(--rule2); border-radius:var(--radius);
-  padding:11px 14px; font-family:var(--serif); font-size:15px; color:var(--ink); outline:none;
+  padding:11px 14px; font-family:var(--serif); font-size:16px; color:var(--ink); outline:none;
   transition:border .15s; -webkit-appearance:none; }
 .auth-input:focus { border-color:var(--accent); }
 .auth-pin-wrap { display:flex; gap:8px; justify-content:center; margin-bottom:6px; }
@@ -872,7 +874,7 @@ header { padding:32px 0 20px; border-bottom:2px solid var(--ink); margin-bottom:
       <button class="hdr-btn active" id="lang-en" onclick="setLang('en')">EN</button>
       <button class="hdr-btn" id="lang-kr" onclick="setLang('kr')">KR</button>
       <button class="hdr-btn" onclick="openShareModal()">📤 Share</button>
-      <button class="hdr-btn" onclick="openAdminModal()">🛡 Admin</button>
+      <!-- Admin accessed via ?admin in URL -->
       <button class="hdr-btn" onclick="openBizModal()">⚙ Change</button>
       <span title="Firebase sync status" class="sync-dot" id="sync-dot"></span>
     </div>
@@ -1828,6 +1830,8 @@ function initApp(){
   document.getElementById('hdr-sub').textContent=`${biz.icon} ${biz.name} · Sierra Leone · Le · ${new Date().toLocaleDateString('en-SL',{day:'2-digit',month:'short',year:'numeric'})}`;
   document.getElementById('biz-badge').textContent=`${biz.icon} ${biz.name}`;
   updateLangUI(); setType('income'); render(); buildEntryStep1(); renderDebtors(); renderSuppliers(); scheduleNotification(); pingStats(); checkForUpdate();
+  // Secret URL-based admin access
+  if(window._openAdminOnBoot){ window._openAdminOnBoot=false; setTimeout(openAdminModal,400); }
   if(window._fbReady) setSyncDot('synced'); else setSyncDot('');
 }
 
@@ -2724,14 +2728,53 @@ async function pushUpdateNotice(){
 async function pingStats(){
   try{
     const db2=window._faDb; if(!db2) return;
-    const {setDoc,doc:fdoc,getDoc,increment}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').catch(()=>({}));
+    const {setDoc,doc:fdoc,getDoc,getDocs,collection}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').catch(()=>({}));
     if(!setDoc) return;
     const uid=window._userId; if(!uid) return;
     const today=new Date().toISOString().slice(0,10);
     // Write user activity marker
     await setDoc(fdoc(db2,'_system','activity_'+uid),{uid,lastSeen:new Date().toISOString(),today},{merge:true});
+
+    // Aggregate stats into _system/stats for admin dashboard
+    try{
+      const d=loadAll();
+      const totalRecords=(d.records||[]).length;
+      // Read existing stats
+      const statsSnap=await getDoc(fdoc(db2,'_system','stats'));
+      const existing=statsSnap.exists()?statsSnap.data():{userCount:0,activeWeek:0,totalRecords:0,newToday:0,_users:{},_today:{}};
+      // Track this user
+      const users=existing._users||{};
+      users[uid]=(users[uid]||0)+1;
+      // Track today's new users (first-time today)
+      const todayUsers=existing._today||{};
+      todayUsers[uid]=today;
+      // Count actives in last 7 days
+      const weekAgo=new Date(Date.now()-7*24*60*60*1000).toISOString().slice(0,10);
+      // We just update our own slice; approximate weekly count from activity docs
+      const statsData={
+        userCount:Object.keys(users).length,
+        activeWeek:(existing.activeWeek||0), // updated by aggregation below
+        totalRecords:(existing.totalRecords||0)-((existing._myRecords&&existing._myRecords[uid])||0)+totalRecords,
+        newToday:Object.values(todayUsers).filter(d=>d===today).length,
+        _users:users,
+        _today:todayUsers,
+        _myRecords:{...(existing._myRecords||{}),[uid]:totalRecords},
+        lastUpdated:new Date().toISOString()
+      };
+      await setDoc(fdoc(db2,'_system','stats'),statsData);
+    }catch(e){ /* stats aggregation failure is non-critical */ }
   }catch(e){}
 }
+
+// ── Secret URL-based admin access ──────────────────────────────
+(function checkAdminUrl(){
+  if(new URLSearchParams(location.search).has('admin')){
+    // Remove ?admin from URL bar without reloading
+    history.replaceState({},'',location.pathname+location.hash);
+    // Open admin modal after app boots
+    window._openAdminOnBoot=true;
+  }
+})();
 
 // ══════════════════════════════════════════════════════════════
 // NOTIFICATIONS — Daily sales reminder
