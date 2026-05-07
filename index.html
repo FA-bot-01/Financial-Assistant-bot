@@ -73,8 +73,17 @@
     _unsub = onSnapshot(d, snap => {
       if(!snap.exists()) return;
       const uid = window._userId;
-      localStorage.setItem('fa-data-'+uid, JSON.stringify(snap.data()));
-      if(window._appBooted && typeof render === 'function'){ render(); renderDebtors(); }
+      const incoming = snap.data();
+      // Only apply the remote snapshot if it is strictly newer than what's local.
+      // Guards against a stale Firebase snapshot overwriting a local save that
+      // hadn't finished syncing yet (e.g. after a power cut).
+      const local = JSON.parse(localStorage.getItem('fa-data-'+uid) || '{}');
+      const incomingTs = incoming._savedAt || 0;
+      const localTs    = local._savedAt    || 0;
+      if(incomingTs >= localTs){
+        localStorage.setItem('fa-data-'+uid, JSON.stringify(incoming));
+        if(window._appBooted && typeof render === 'function'){ render(); renderDebtors(); }
+      }
     });
   }
 
@@ -91,7 +100,18 @@
     const remote = await fbLoad();
     const lsKey  = 'fa-data-'+userId;
     if(remote){
-      localStorage.setItem(lsKey, JSON.stringify(remote));
+      // Only overwrite local data if remote is strictly newer.
+      // This protects transactions saved locally just before a power cut,
+      // where Firebase hadn't finished writing yet.
+      const local = JSON.parse(localStorage.getItem(lsKey) || '{}');
+      const remoteTs = remote._savedAt || 0;
+      const localTs  = local._savedAt  || 0;
+      if(remoteTs >= localTs){
+        localStorage.setItem(lsKey, JSON.stringify(remote));
+      } else {
+        // Local is newer — push it back to Firebase so cloud catches up
+        fbSave(local);
+      }
     }
     window._fbReady = true;
     setSyncDot('synced');
@@ -1223,7 +1243,8 @@ header { padding:32px 0 20px; border-bottom:2px solid var(--ink); margin-bottom:
           <tbody>
             <tr class="fs-head"><td colspan="2">Revenue</td></tr>
             <tr><td class="fs-indent">Sales / Income</td><td class="num" id="pl-revenue">Le 0</td></tr>
-            <tr class="fs-subtotal"><td>Gross Revenue</td><td class="num" id="pl-gross-rev">Le 0</td></tr>
+            <tr id="pl-returns-row" style="display:none"><td class="fs-indent" style="color:var(--red)">− Sales Returns</td><td class="num" id="pl-sales-returns" style="color:var(--red)">Le 0</td></tr>
+            <tr class="fs-subtotal"><td>Net Revenue</td><td class="num" id="pl-gross-rev">Le 0</td></tr>
 
             <tr class="fs-spacer"><td colspan="2"></td></tr>
             <tr class="fs-head"><td colspan="2">Cost of Goods Sold (COGS)</td></tr>
@@ -1807,6 +1828,7 @@ window._appBooted = false;
 function lsKey(){ return window._userId ? 'fa-data-'+window._userId : 'fa-data-anon'; }
 function loadAll(){ try{ return JSON.parse(localStorage.getItem(lsKey()))||{}; }catch{ return {}; } }
 function saveAll(d){
+  d._savedAt = Date.now();  // timestamp every save so login sync can compare
   localStorage.setItem(lsKey(), JSON.stringify(d));
   if(window._fbSave){
     setSyncDot('syncing');
@@ -2787,15 +2809,16 @@ function buildReport(){
   // ── Step 1: Revenue — exclude financing inflows (debtor payments) ──
   // _openingStock and _restock entries are NEVER counted as current-period P&L expenses.
   // _restock = additional purchases that increase inventory (balance sheet asset), not COGS.
-  let revenue=0, cashPurchases=0, opex={rent:0,staff:0,transport:0,marketing:0,other:0};
+  let grossRevenue=0, salesReturns=0, cashPurchases=0, opex={rent:0,staff:0,transport:0,marketing:0,other:0};
   recs.forEach(r=>{
-    if(r.type==='income' && !r._debtorPayment) revenue += r.amount;
-    else if(r.type==='return') revenue -= r.amount;   // sales returns reduce revenue
+    if(r.type==='income' && !r._debtorPayment) grossRevenue += r.amount;
+    else if(r.type==='return') salesReturns += r.amount;
     else if(r.type==='expense' && !r._openingStock && !r._supplierPayment && !r._returnRefund && !r._drawing && !r._restock){
       if(isStockCategory(r.category)) cashPurchases += r.amount;
       else opex[catBucket(r.category)] += r.amount;
     }
   });
+  const revenue = grossRevenue - salesReturns;   // net revenue after returns
   // Credit purchases and additional purchases (_restock) are inventory assets, NOT P&L expenses.
   // (Inventory asset ↑, Accounts Payable/Cash ↓). They must NOT reduce P&L profit until goods are sold.
   // Only opening-stock cash purchases flow into COGS / purchases here.
@@ -2837,8 +2860,11 @@ function buildReport(){
 
   // ── P&L display ──
   const s = n => (n<0?'−':'')+fmt(Math.abs(n));
-  set('pl-revenue', fmt(revenue));
-  set('pl-gross-rev', fmt(revenue));
+  set('pl-revenue', fmt(grossRevenue));
+  const plReturnsRow = document.getElementById('pl-returns-row');
+  if(plReturnsRow){ plReturnsRow.style.display = salesReturns > 0 ? '' : 'none'; }
+  set('pl-sales-returns', fmt(salesReturns));
+  set('pl-gross-rev', fmt(revenue));  // net revenue (after returns)
   set('pl-opening-stock', fmt(openingStock));
   set('pl-cash-purchases', fmt(cashPurchases));
   // Total Purchases = Opening Stock + Cash Purchases + Credit Purchases (what the label implies)
@@ -4097,7 +4123,7 @@ function dismissNotif(openApp){
 
 
 // ══════════ UTILS ══════════
-function fmt(n){ return 'Le\u00a0'+Math.abs(n).toLocaleString('en'); }
+function fmt(n){ return 'Le\u00a0'+Math.round(Math.abs(n)).toLocaleString('en'); }
 function fmtDate(iso){ return new Date(iso).toLocaleDateString('en-SL',{day:'2-digit',month:'short',year:'numeric'}); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function toast(msg){
