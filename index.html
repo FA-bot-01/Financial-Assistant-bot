@@ -954,6 +954,7 @@ header { padding:32px 0 20px; border-bottom:2px solid var(--ink); margin-bottom:
     <button class="hdr-btn" onclick="openReportModal()" style="background:var(--paper2)">📊 Reports</button>
     <button class="hdr-btn" onclick="openBackupModal()" style="background:var(--paper2)">💾 Backup</button>
     <button class="hdr-btn" onclick="openInventoryPanel()" style="background:var(--paper2)" id="inv-panel-btn">🗃 Inventory</button>
+    <button class="hdr-btn" onclick="openCatalogueModal()" style="background:var(--paper2);color:#5a3e8e;border-color:#8e6ec4" id="catalogue-btn" title="Add or rename products in your income categories">🏷 Products</button>
     <button class="hdr-btn" onclick="openReturnsModal()" style="background:var(--paper2);color:var(--accent);border-color:var(--accent)" id="returns-btn">↩ Returns</button>
     <button class="hdr-btn" onclick="openDrawingsModal()" style="background:var(--paper2);color:var(--red);border-color:var(--red)" id="drawings-btn">💼 Drawings</button>
   </div>
@@ -5501,6 +5502,499 @@ function confirmDrawing(){
   render();
   toast('💼 Drawing of '+fmt(amount)+' recorded ✓');
 }
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     PRODUCT CATALOGUE MANAGER
+     Lets users rename existing products / categories and add new ones.
+     Custom entries are saved under data._customCatalogue and merged with
+     BUSINESSES at runtime so income chips, inventory suggestions, and
+     all reports all see the changes automatically.
+═══════════════════════════════════════════════════════════════════ -->
+
+<style>
+/* ── Catalogue Manager modal ── */
+.cat-mgr-overlay { position:fixed; inset:0; background:rgba(26,46,28,.6); z-index:200;
+  display:none; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
+.cat-mgr-overlay.open { display:flex; }
+.cat-mgr-card { background:var(--paper2); border:1px solid var(--rule2); border-radius:10px;
+  padding:26px 24px 24px; max-width:580px; width:100%; animation:fadeUp .22s ease both;
+  margin:auto; }
+.cat-mgr-card h2 { font-family:var(--display); font-size:22px; font-style:italic;
+  color:#5a3e8e; margin-bottom:3px; }
+.cat-mgr-sub { font-family:var(--mono); font-size:10px; color:var(--ink3);
+  text-transform:uppercase; letter-spacing:.07em; margin-bottom:18px; }
+
+/* Category accordion */
+.cmgr-cat { border:1px solid var(--rule2); border-radius:var(--radius);
+  margin-bottom:8px; overflow:hidden; }
+.cmgr-cat-hdr { display:flex; align-items:center; gap:8px; padding:10px 12px;
+  background:var(--paper3); cursor:pointer; user-select:none; }
+.cmgr-cat-hdr:hover { background:var(--rule); }
+.cmgr-cat-title { font-family:var(--mono); font-size:12px; font-weight:600;
+  color:var(--ink); flex:1; }
+.cmgr-cat-count { font-family:var(--mono); font-size:10px; color:var(--ink3); }
+.cmgr-cat-arrow { font-family:var(--mono); font-size:11px; color:var(--ink3);
+  transition:transform .2s; }
+.cmgr-cat-body { display:none; padding:10px 12px 12px; }
+.cmgr-cat-body.open { display:block; }
+
+/* Category name edit row */
+.cmgr-cat-rename { display:flex; gap:6px; align-items:center; margin-bottom:10px;
+  padding-bottom:10px; border-bottom:1px dashed var(--rule); }
+.cmgr-cat-rename label { font-family:var(--mono); font-size:9px; text-transform:uppercase;
+  letter-spacing:.07em; color:var(--ink3); white-space:nowrap; }
+.cmgr-inp { background:var(--paper); border:1px solid var(--rule2); border-radius:var(--radius);
+  padding:7px 10px; font-family:var(--serif); font-size:14px; color:var(--ink);
+  outline:none; flex:1; transition:border .15s; -webkit-appearance:none; }
+.cmgr-inp:focus { border-color:#8e6ec4; }
+.cmgr-save-btn { font-family:var(--mono); font-size:11px; padding:7px 12px;
+  border:1px solid #8e6ec4; border-radius:var(--radius); background:#f3eeff;
+  color:#5a3e8e; cursor:pointer; white-space:nowrap; transition:all .15s; }
+.cmgr-save-btn:hover { background:#e3d5ff; }
+
+/* Product item rows */
+.cmgr-item-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+.cmgr-item-inp { background:var(--paper); border:1px solid var(--rule2); border-radius:var(--radius);
+  padding:7px 10px; font-family:var(--serif); font-size:14px; color:var(--ink);
+  outline:none; flex:1; transition:border .15s; -webkit-appearance:none; }
+.cmgr-item-inp:focus { border-color:#8e6ec4; }
+.cmgr-item-save { font-family:var(--mono); font-size:10px; padding:7px 10px;
+  border:1px solid var(--rule2); border-radius:var(--radius); background:var(--paper3);
+  color:var(--ink2); cursor:pointer; transition:all .15s; white-space:nowrap; }
+.cmgr-item-save:hover { border-color:#8e6ec4; color:#5a3e8e; }
+.cmgr-item-del { font-family:var(--mono); font-size:13px; padding:5px 8px;
+  border:none; border-radius:var(--radius); background:none; color:var(--rule2);
+  cursor:pointer; transition:color .15s; flex-shrink:0; }
+.cmgr-item-del:hover { color:var(--red); }
+.cmgr-item-badge { font-family:var(--mono); font-size:9px; padding:2px 6px;
+  border-radius:3px; background:#e8f5e9; color:#2e7d32; border:1px solid #c8e6c9;
+  white-space:nowrap; margin-left:2px; }
+.cmgr-item-badge.custom { background:#f3eeff; color:#5a3e8e; border-color:#d1c4e9; }
+
+/* Add new product row */
+.cmgr-add-row { display:flex; gap:6px; align-items:center; margin-top:10px;
+  padding-top:10px; border-top:1px dashed var(--rule); }
+.cmgr-add-inp { background:var(--paper); border:1px dashed #8e6ec4; border-radius:var(--radius);
+  padding:7px 10px; font-family:var(--serif); font-size:14px; color:var(--ink);
+  outline:none; flex:1; transition:border .15s; -webkit-appearance:none; }
+.cmgr-add-inp:focus { border-style:solid; border-color:#5a3e8e; }
+.cmgr-add-btn { font-family:var(--mono); font-size:11px; padding:7px 12px;
+  border:1px solid #8e6ec4; border-radius:var(--radius); background:#f3eeff;
+  color:#5a3e8e; cursor:pointer; white-space:nowrap; transition:all .15s; }
+.cmgr-add-btn:hover { background:#e3d5ff; }
+
+/* Add new category section */
+.cmgr-new-cat-panel { background:var(--paper3); border:1px dashed #8e6ec4;
+  border-radius:var(--radius); padding:14px; margin-top:16px; }
+.cmgr-new-cat-title { font-family:var(--mono); font-size:10px; text-transform:uppercase;
+  letter-spacing:.07em; color:#5a3e8e; margin-bottom:10px; }
+</style>
+
+<!-- Catalogue Manager Modal -->
+<div class="cat-mgr-overlay" id="cat-mgr-modal">
+  <div class="cat-mgr-card">
+    <h2>🏷 Product Catalogue</h2>
+    <div class="cat-mgr-sub">Customise your income categories &amp; products — changes sync to inventory &amp; entry forms</div>
+    <div class="auth-err" id="cmgr-err" style="margin-bottom:10px"></div>
+
+    <!-- Tab: Income / Expense toggle (income only for now as that's what connects to inventory) -->
+    <div style="display:flex;gap:4px;margin-bottom:14px;background:var(--paper3);border-radius:8px;padding:4px">
+      <button id="cmgr-tab-income"  onclick="cmgrSetTab('income')"
+        style="flex:1;padding:7px;border:none;border-radius:6px;font-family:var(--mono);font-size:11px;cursor:pointer;background:var(--paper);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.1);font-weight:600">
+        💰 Income Products
+      </button>
+      <button id="cmgr-tab-expense" onclick="cmgrSetTab('expense')"
+        style="flex:1;padding:7px;border:none;border-radius:6px;font-family:var(--mono);font-size:11px;cursor:pointer;background:transparent;color:var(--ink3)">
+        💸 Expense Categories
+      </button>
+    </div>
+
+    <div id="cmgr-body" style="max-height:60vh;overflow-y:auto;padding-right:4px"></div>
+
+    <!-- Add new category -->
+    <div class="cmgr-new-cat-panel" id="cmgr-new-cat-panel">
+      <div class="cmgr-new-cat-title">➕ Add New Category</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input class="cmgr-add-inp" id="cmgr-new-cat-inp" placeholder="e.g. Wholesale Items" maxlength="50"
+          style="flex:1">
+        <button class="cmgr-add-btn" onclick="cmgrAddCategory()">Add Category</button>
+      </div>
+      <div class="auth-err" id="cmgr-new-cat-err" style="margin-top:6px"></div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="ob-btn-ghost" onclick="closeCatalogueModal()" style="flex:1;text-align:center">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// PRODUCT CATALOGUE MANAGER
+// ══════════════════════════════════════════════════════════════
+
+let _cmgrTab = 'income';  // 'income' | 'expense'
+
+// ── Persist custom catalogue ──────────────────────────────────
+// Structure: { income: { bizId: { catIndex: { name:'…', items:['…',…] } } }, expense: {…} }
+// We store overrides as a diff — only the categories/items changed by the user.
+function getCatalogue(){ return loadAll()._customCatalogue || {}; }
+function saveCatalogue(c){
+  const d = loadAll();
+  d._customCatalogue = c;
+  saveAll(d);
+}
+
+// Return the live merged categories for this business, for the given type.
+// Called by buildEntryStep1 and aiGetSuggestions so they always see user edits.
+function getMergedCategories(bizId, type){
+  const biz = BUSINESSES.find(b=>b.id===bizId) || BUSINESSES[0];
+  const base = type === 'income' ? biz.incomeCategories : biz.expenseCategories;
+  const cat  = getCatalogue();
+  const overrides = (cat[type] || {})[bizId] || {};
+
+  // Deep-copy the base and apply overrides
+  const merged = base.map((c, idx) => {
+    const ov = overrides[String(idx)];
+    if(!ov) return { name: c.name, items: [...c.items], _idx: idx, _isBuiltin: true };
+    return {
+      name:       ov.name  !== undefined ? ov.name  : c.name,
+      items:      ov.items !== undefined ? [...ov.items] : [...c.items],
+      _idx:       idx,
+      _isBuiltin: true
+    };
+  });
+
+  // Append any user-added categories (stored with _idx like 'custom-0', 'custom-1' …)
+  Object.entries(overrides).forEach(([k, ov]) => {
+    if(k.startsWith('custom-')){
+      merged.push({ name: ov.name || '', items: ov.items || [], _idx: k, _isBuiltin: false });
+    }
+  });
+
+  return merged;
+}
+
+// Override buildEntryStep1 to use merged categories (user edits applied)
+function buildEntryStep1(){
+  const s = getSettings(); if(!s) return;
+  const cats = getMergedCategories(s.bizId, selectedType);
+  selectedCat = null; selectedItem = '';
+  document.getElementById('inp-item').value = '';
+  const catEl = document.getElementById('cat-chips'); catEl.innerHTML = '';
+  cats.forEach(cat => {
+    const ch = document.createElement('button'); ch.className = 'chip'; ch.textContent = cat.name;
+    ch.onclick = () => {
+      catEl.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+      ch.classList.add('on'); selectedCat = cat.name; selectedItem = '';
+      buildItemChips(cat.items);
+    };
+    catEl.appendChild(ch);
+  });
+  document.getElementById('item-chips').innerHTML = '';
+}
+
+// Override aiGetSuggestions so inventory Opening Stock datalist has all products (including custom ones)
+function aiGetSuggestions(){
+  const s = getSettings() || {};
+  const cats = getMergedCategories(s.bizId || (BUSINESSES[0].id), 'income');
+  const list = [];
+  cats.forEach(cat => cat.items.forEach(it => { if(!list.includes(it)) list.push(it); }));
+  return list;
+}
+
+// ── Open / close ──────────────────────────────────────────────
+function openCatalogueModal(){
+  document.getElementById('cmgr-err').textContent = '';
+  _cmgrTab = 'income';
+  cmgrSetTab('income');
+  document.getElementById('cat-mgr-modal').classList.add('open');
+}
+function closeCatalogueModal(){
+  document.getElementById('cat-mgr-modal').classList.remove('open');
+  // Refresh the entry form so any name changes are visible immediately
+  if(typeof buildEntryStep1 === 'function') buildEntryStep1();
+}
+
+// ── Tab switch ────────────────────────────────────────────────
+function cmgrSetTab(tab){
+  _cmgrTab = tab;
+  const inc = document.getElementById('cmgr-tab-income');
+  const exp = document.getElementById('cmgr-tab-expense');
+  inc.style.background  = tab === 'income'  ? 'var(--paper)' : 'transparent';
+  inc.style.color       = tab === 'income'  ? 'var(--ink)'   : 'var(--ink3)';
+  inc.style.fontWeight  = tab === 'income'  ? '600'          : '400';
+  inc.style.boxShadow   = tab === 'income'  ? '0 1px 4px rgba(0,0,0,.1)' : 'none';
+  exp.style.background  = tab === 'expense' ? 'var(--paper)' : 'transparent';
+  exp.style.color       = tab === 'expense' ? 'var(--ink)'   : 'var(--ink3)';
+  exp.style.fontWeight  = tab === 'expense' ? '600'          : '400';
+  exp.style.boxShadow   = tab === 'expense' ? '0 1px 4px rgba(0,0,0,.1)' : 'none';
+  // Show/hide "Add new category" only for income (could enable for expense later)
+  document.getElementById('cmgr-new-cat-panel').style.display = '';
+  cmgrRender();
+}
+
+// ── Main render ───────────────────────────────────────────────
+function cmgrRender(){
+  const s = getSettings(); if(!s){ document.getElementById('cmgr-body').innerHTML='<p style="font-family:var(--mono);font-size:11px;color:var(--ink3);padding:12px">Please complete setup first.</p>'; return; }
+  const cats = getMergedCategories(s.bizId, _cmgrTab);
+  const body = document.getElementById('cmgr-body');
+  body.innerHTML = '';
+
+  cats.forEach((cat, renderIdx) => {
+    const catKey = String(cat._idx);
+    const isCustomCat = !cat._isBuiltin;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'cmgr-cat';
+    wrap.id = 'cmgr-cat-wrap-'+catKey;
+
+    // Build items HTML
+    const itemsHtml = cat.items.map((item, iIdx) => {
+      const isCustomItem = isCustomCat || cmgrIsCustomItem(s.bizId, catKey, iIdx, item);
+      return `<div class="cmgr-item-row" id="cmgr-item-row-${catKey}-${iIdx}">
+        <input class="cmgr-item-inp" value="${esc(item)}" maxlength="60"
+          placeholder="Product name"
+          onchange="cmgrRenameItem('${s.bizId}','${catKey}',${iIdx},this.value)">
+        <span class="cmgr-item-badge${isCustomItem?' custom':''}">
+          ${isCustomItem ? '✏ Custom' : '✔ Built-in'}
+        </span>
+        <button class="cmgr-item-del" onclick="cmgrDeleteItem('${s.bizId}','${catKey}',${iIdx})" title="Remove product">×</button>
+      </div>`;
+    }).join('');
+
+    // Category header with rename
+    wrap.innerHTML = `
+      <div class="cmgr-cat-hdr" onclick="cmgrToggleCat('${catKey}')">
+        <span class="cmgr-cat-title">${esc(cat.name)}</span>
+        <span class="cmgr-cat-count">${cat.items.length} product${cat.items.length!==1?'s':''}</span>
+        ${isCustomCat ? `<button onclick="event.stopPropagation();cmgrDeleteCategory('${s.bizId}','${catKey}')" style="font-family:var(--mono);font-size:10px;padding:3px 7px;border:1px solid var(--red);border-radius:3px;background:#fff0f0;color:var(--red);cursor:pointer" title="Delete this category">Delete</button>` : ''}
+        <span class="cmgr-cat-arrow" id="cmgr-arrow-${catKey}">▶</span>
+      </div>
+      <div class="cmgr-cat-body" id="cmgr-cat-body-${catKey}">
+        <!-- Rename category -->
+        <div class="cmgr-cat-rename">
+          <label>Category name:</label>
+          <input class="cmgr-inp" value="${esc(cat.name)}" maxlength="50"
+            id="cmgr-cat-inp-${catKey}" placeholder="Category name">
+          <button class="cmgr-save-btn" onclick="cmgrRenameCategory('${s.bizId}','${catKey}',document.getElementById('cmgr-cat-inp-${catKey}').value)">
+            Save Name
+          </button>
+        </div>
+
+        <!-- Products list -->
+        <div id="cmgr-items-${catKey}">${itemsHtml || '<div style="font-family:var(--mono);font-size:11px;color:var(--ink3);padding:6px 0">No products yet — add one below.</div>'}</div>
+
+        <!-- Add new product -->
+        <div class="cmgr-add-row">
+          <input class="cmgr-add-inp" id="cmgr-new-item-inp-${catKey}" placeholder="New product name…" maxlength="60">
+          <button class="cmgr-add-btn" onclick="cmgrAddItem('${s.bizId}','${catKey}')">+ Add</button>
+        </div>
+        <div class="auth-err" id="cmgr-item-err-${catKey}" style="margin-top:4px"></div>
+      </div>`;
+
+    body.appendChild(wrap);
+  });
+}
+
+function cmgrToggleCat(key){
+  const body  = document.getElementById('cmgr-cat-body-'+key);
+  const arrow = document.getElementById('cmgr-arrow-'+key);
+  if(!body) return;
+  const open = body.classList.toggle('open');
+  if(arrow) arrow.textContent = open ? '▼' : '▶';
+  if(arrow) arrow.style.transform = open ? 'rotate(0deg)' : '';
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+// Check whether a specific built-in item at position iIdx has been customised
+function cmgrIsCustomItem(bizId, catKey, iIdx, currentValue){
+  const cat = getCatalogue();
+  const ov  = ((cat[_cmgrTab]||{})[bizId]||{})[catKey];
+  if(!ov || !ov.items) return false;
+  // If catKey starts with 'custom-' the whole category is custom
+  if(String(catKey).startsWith('custom-')) return true;
+  // Compare to the original built-in value
+  const s   = getSettings();
+  const biz = BUSINESSES.find(b=>b.id===bizId)||BUSINESSES[0];
+  const base = _cmgrTab === 'income' ? biz.incomeCategories : biz.expenseCategories;
+  const baseCat = base[parseInt(catKey)];
+  if(!baseCat) return true;
+  const originalItem = baseCat.items[iIdx];
+  return originalItem !== currentValue;
+}
+
+// ── Rename category ───────────────────────────────────────────
+function cmgrRenameCategory(bizId, catKey, newName){
+  newName = (newName||'').trim();
+  if(!newName){ toast('Category name cannot be empty.'); return; }
+  const cat = getCatalogue();
+  if(!cat[_cmgrTab]) cat[_cmgrTab] = {};
+  if(!cat[_cmgrTab][bizId]) cat[_cmgrTab][bizId] = {};
+  if(!cat[_cmgrTab][bizId][catKey]) cat[_cmgrTab][bizId][catKey] = {};
+  cat[_cmgrTab][bizId][catKey].name = newName;
+  saveCatalogue(cat);
+  cmgrRender();
+  if(document.getElementById('cmgr-cat-body-'+catKey)) cmgrToggleCat(catKey); // re-open
+  toast('Category renamed to "' + newName + '" ✓');
+}
+
+// ── Delete category (custom only) ─────────────────────────────
+function cmgrDeleteCategory(bizId, catKey){
+  if(!catKey.startsWith('custom-')){ toast('Built-in categories cannot be deleted. You can rename them instead.'); return; }
+  if(!confirm('Delete this category and all its products?')) return;
+  const cat = getCatalogue();
+  if(cat[_cmgrTab] && cat[_cmgrTab][bizId]) delete cat[_cmgrTab][bizId][catKey];
+  saveCatalogue(cat);
+  cmgrRender();
+  toast('Category deleted ✓');
+}
+
+// ── Rename item ───────────────────────────────────────────────
+function cmgrRenameItem(bizId, catKey, iIdx, newName){
+  newName = (newName||'').trim();
+  if(!newName){ toast('Product name cannot be empty.'); return; }
+  const cat = getCatalogue();
+  if(!cat[_cmgrTab]) cat[_cmgrTab] = {};
+  if(!cat[_cmgrTab][bizId]) cat[_cmgrTab][bizId] = {};
+  if(!cat[_cmgrTab][bizId][catKey]) cat[_cmgrTab][bizId][catKey] = {};
+
+  // Load current items for this category (merged)
+  const s = getSettings();
+  const mergedCats = getMergedCategories(bizId, _cmgrTab);
+  const catObj = mergedCats.find(c=>String(c._idx)===String(catKey));
+  const items = catObj ? [...catObj.items] : [];
+
+  items[iIdx] = newName;
+  cat[_cmgrTab][bizId][catKey].items = items;
+  saveCatalogue(cat);
+
+  // Also rename in inventory if a matching item exists
+  _cmgrRenameInventoryItem(items[iIdx], newName, catObj ? catObj.items[iIdx] : null);
+
+  toast('Product renamed to "' + newName + '" ✓');
+  // Re-render badge only — avoid full re-render (user is still editing)
+  const badge = document.querySelector(`#cmgr-item-row-${catKey}-${iIdx} .cmgr-item-badge`);
+  if(badge){ badge.textContent = '✏ Custom'; badge.className = 'cmgr-item-badge custom'; }
+}
+
+// Rename matching inventory displayName when a product is renamed
+function _cmgrRenameInventoryItem(oldName, newName, origName){
+  const inv = getInventory();
+  let changed = false;
+  inv.forEach(item => {
+    if(invNorm(item.displayName) === invNorm(oldName) || invNorm(item.displayName) === invNorm(origName||'')){
+      item.displayName = newName;
+      changed = true;
+    }
+  });
+  if(changed) saveInventory(inv);
+}
+
+// ── Delete item ───────────────────────────────────────────────
+function cmgrDeleteItem(bizId, catKey, iIdx){
+  if(!confirm('Remove this product from the list? (Existing records will not be affected.)')) return;
+  const cat = getCatalogue();
+  if(!cat[_cmgrTab]) cat[_cmgrTab] = {};
+  if(!cat[_cmgrTab][bizId]) cat[_cmgrTab][bizId] = {};
+  if(!cat[_cmgrTab][bizId][catKey]) cat[_cmgrTab][bizId][catKey] = {};
+
+  const s = getSettings();
+  const mergedCats = getMergedCategories(bizId, _cmgrTab);
+  const catObj = mergedCats.find(c=>String(c._idx)===String(catKey));
+  const items = catObj ? [...catObj.items] : [];
+
+  items.splice(iIdx, 1);
+  cat[_cmgrTab][bizId][catKey].items = items;
+  saveCatalogue(cat);
+  cmgrRender();
+  // Re-open the accordion for convenience
+  const body = document.getElementById('cmgr-cat-body-'+catKey);
+  if(body && !body.classList.contains('open')) cmgrToggleCat(catKey);
+  toast('Product removed ✓');
+}
+
+// ── Add new product to a category ────────────────────────────
+function cmgrAddItem(bizId, catKey){
+  const inp = document.getElementById('cmgr-new-item-inp-'+catKey);
+  const err = document.getElementById('cmgr-item-err-'+catKey);
+  if(!inp || !err) return;
+  const name = inp.value.trim();
+  err.textContent = '';
+
+  if(!name){ err.textContent = 'Please enter a product name.'; return; }
+
+  const cat = getCatalogue();
+  if(!cat[_cmgrTab]) cat[_cmgrTab] = {};
+  if(!cat[_cmgrTab][bizId]) cat[_cmgrTab][bizId] = {};
+  if(!cat[_cmgrTab][bizId][catKey]) cat[_cmgrTab][bizId][catKey] = {};
+
+  const s = getSettings();
+  const mergedCats = getMergedCategories(bizId, _cmgrTab);
+  const catObj = mergedCats.find(c=>String(c._idx)===String(catKey));
+  const items = catObj ? [...catObj.items] : [];
+
+  // Duplicate check (case-insensitive)
+  if(items.some(x=>x.toLowerCase()===name.toLowerCase())){
+    err.textContent = '"' + name + '" already exists in this category.'; return;
+  }
+
+  items.push(name);
+  cat[_cmgrTab][bizId][catKey].items = items;
+  saveCatalogue(cat);
+  inp.value = '';
+  cmgrRender();
+  // Re-open accordion
+  const body = document.getElementById('cmgr-cat-body-'+catKey);
+  if(body && !body.classList.contains('open')) cmgrToggleCat(catKey);
+  toast('"' + name + '" added to category ✓');
+}
+
+// ── Add a brand-new category ──────────────────────────────────
+function cmgrAddCategory(){
+  const inp = document.getElementById('cmgr-new-cat-inp');
+  const err = document.getElementById('cmgr-new-cat-err');
+  const name = inp.value.trim();
+  err.textContent = '';
+  if(!name){ err.textContent = 'Please enter a category name.'; return; }
+
+  const s = getSettings();
+  if(!s){ err.textContent = 'Please complete business setup first.'; return; }
+
+  const cat = getCatalogue();
+  if(!cat[_cmgrTab]) cat[_cmgrTab] = {};
+  if(!cat[_cmgrTab][s.bizId]) cat[_cmgrTab][s.bizId] = {};
+
+  // Find next custom key
+  const existing = Object.keys(cat[_cmgrTab][s.bizId]).filter(k=>k.startsWith('custom-'));
+  const nextIdx  = existing.length;
+  const newKey   = 'custom-' + nextIdx;
+
+  // Duplicate name check
+  const mergedCats = getMergedCategories(s.bizId, _cmgrTab);
+  if(mergedCats.some(c=>c.name.toLowerCase()===name.toLowerCase())){
+    err.textContent = 'A category called "' + name + '" already exists.'; return;
+  }
+
+  cat[_cmgrTab][s.bizId][newKey] = { name, items: [] };
+  saveCatalogue(cat);
+  inp.value = '';
+  cmgrRender();
+  // Auto-open the new category accordion
+  setTimeout(() => {
+    const body = document.getElementById('cmgr-cat-body-'+newKey);
+    if(body && !body.classList.contains('open')) cmgrToggleCat(newKey);
+    const newInp = document.getElementById('cmgr-new-item-inp-'+newKey);
+    if(newInp) newInp.focus();
+  }, 60);
+  toast('Category "' + name + '" added — now add your products ✓');
+}
+
+// Close catalogue modal on Escape
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') closeCatalogueModal();
+});
 </script>
 
 <!-- ══════════════════════════════════════════════════════════════════
